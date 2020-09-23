@@ -50,6 +50,7 @@ gcc_w/_OpenBLAS:
   - git submodule update --init --recursive
   - export LD_LIBRARY_PATH=/opt/OpenBLAS/lib/libopenblas_armv8p-r0.3.10.dev.so
   - cd src/cpu/aarch64/xbyak_translator_aarch64/translator/third_party/
+  - mkdir build_xed_aarch64
   - cd build_xed_aarch64/
   - ../xed/mfile.py --shared examples install
   - cd kits/
@@ -88,6 +89,7 @@ fcc_w/o_SSL2:
   - export CC="fcc -Nclang -Knolargepage"
   - export CXX="FCC -Nclang -Knolargepage" 
   - cd src/cpu/aarch64/xbyak_translator_aarch64/translator/third_party/
+  - mkdir build_xed_aarch64
   - cd build_xed_aarch64/
   - ../xed/mfile.py --shared examples install
   - cd kits/
@@ -126,6 +128,7 @@ fcc_w/_SSL2:
   - export CC="fcc -Nclang -Knolargepage"
   - export CXX="FCC -Nclang -Knolargepage" 
   - cd src/cpu/aarch64/xbyak_translator_aarch64/translator/third_party/
+  - mkdir build_xed_aarch64
   - cd build_xed_aarch64/
   - ../xed/mfile.py --shared examples install
   - cd kits/
