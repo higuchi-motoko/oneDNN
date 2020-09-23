@@ -8,7 +8,7 @@ before_script:
 
 gcc_w/o_OpenBLAS:
   stage: test
-  image: 6e7c3dad9b72
+  image: 0b158dd36e5c
   script:
   - git submodule sync --recursive
   - git submodule update --init --recursive
@@ -34,7 +34,7 @@ gcc_w/o_OpenBLAS:
 
 gcc_w/_OpenBLAS:
   stage: test
-  image: 6e7c3dad9b72
+  image: 0b158dd36e5c
   script:
   - git submodule sync --recursive
   - git submodule update --init --recursive
@@ -60,7 +60,7 @@ gcc_w/_OpenBLAS:
 
 fcc_w/o_SSL2:
   stage: test
-  image: 6e7c3dad9b72
+  image: 0b158dd36e5c
   script:
   - git submodule sync --recursive
   - git submodule update --init --recursive
@@ -89,7 +89,7 @@ fcc_w/o_SSL2:
 
 fcc_w/_SSL2:
   stage: test
-  image: 6e7c3dad9b72
+  image: 0b158dd36e5c
   script:
   - git submodule sync --recursive
   - git submodule update --init --recursive
