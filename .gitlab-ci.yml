@@ -14,8 +14,6 @@ gcc_w/o_OpenBLAS:
   - git submodule update --init --recursive
   - export LD_LIBRARY_PATH=/opt/OpenBLAS/lib/libopenblas_armv8p-r0.3.10.dev.so
   - ./build_xed.sh
-  - export LD_LIBRARY_PATH=${CI_XED_LIB}:${LD_LIBRARY_PATH}
-  - export XED_ROOT_DIR=${XED_ROOT}
   - mkdir build_aarch64
   - cd build_aarch64
   - cmake -DDNNL_INDIRECT_JIT_AARCH64=ON .. 
@@ -37,8 +35,6 @@ gcc_w/_OpenBLAS:
   - git submodule update --init --recursive
   - export LD_LIBRARY_PATH=/opt/OpenBLAS/lib/libopenblas_armv8p-r0.3.10.dev.so
   - ./build_xed.sh
-  - export LD_LIBRARY_PATH=${CI_XED_LIB}:${LD_LIBRARY_PATH}
-  - export XED_ROOT_DIR=${XED_ROOT}
   - mkdir build_aarch64
   - cd build_aarch64/
   - cmake -DDNNL_INDIRECT_JIT_AARCH64=ON -DWITH_BLAS=openblas ..
@@ -63,8 +59,6 @@ fcc_w/o_SSL2:
   - export CC="fcc -Nclang -Knolargepage"
   - export CXX="FCC -Nclang -Knolargepage" 
   - ./build_xed.sh
-  - export LD_LIBRARY_PATH=${CI_XED_LIB}:${LD_LIBRARY_PATH}
-  - export XED_ROOT_DIR=${XED_ROOT}  
   - mkdir build_aarch64
   - cd build_aarch64/
   - cmake -DDNNL_INDIRECT_JIT_AARCH64=ON ..
@@ -89,8 +83,6 @@ fcc_w/_SSL2:
   - export CC="fcc -Nclang -Knolargepage"
   - export CXX="FCC -Nclang -Knolargepage" 
   - ./build_xed.sh
-  - export LD_LIBRARY_PATH=${CI_XED_LIB}:${LD_LIBRARY_PATH}
-  - export XED_ROOT_DIR=${XED_ROOT}  
   - mkdir build_aarch64
   - cd build_aarch64/
   - cmake -DDNNL_INDIRECT_JIT_AARCH64=ON -DWITH_BLAS=ssl2 ..

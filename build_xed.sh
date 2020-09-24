@@ -29,3 +29,5 @@ CI_XED_PATH=`pwd`
 cd ../lib/
 CI_XED_LIB=`pwd`
 cd ../../../../../../../../../../
+export LD_LIBRARY_PATH=${CI_XED_LIB}:${LD_LIBRARY_PATH}
+export XED_ROOT_DIR=${XED_ROOT}
