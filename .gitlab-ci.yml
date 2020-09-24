@@ -13,25 +13,12 @@ gcc_w/o_OpenBLAS:
   - git submodule sync --recursive
   - git submodule update --init --recursive
   - export LD_LIBRARY_PATH=/opt/OpenBLAS/lib/libopenblas_armv8p-r0.3.10.dev.so
-  - cd src/cpu/aarch64/xbyak_translator_aarch64/translator/third_party/
-  - mkdir build_xed_aarch64
-  - cd build_xed_aarch64/
-  - ../xed/mfile.py --shared examples install
-  - cd kits/
-  - XED=`ls | grep install`
-  - ln -sf $XED xed
-  - cd xed/
-  - XED_ROOT=`pwd`
-  - cd bin/
-  - CI_XED_PATH=`pwd`
-  - cd ../lib/
-  - CI_XED_LIB=`pwd`
-  - cd ../../../../../../../../../../
+  - ./build_xed.sh
   - export LD_LIBRARY_PATH=${CI_XED_LIB}:${LD_LIBRARY_PATH}
   - export XED_ROOT_DIR=${XED_ROOT}
   - mkdir build_aarch64
   - cd build_aarch64
-  - cmake .. 
+  - cmake -DDNNL_INDIRECT_JIT_AARCH64=ON .. 
   - make -j48
   - cd tests/gtests
   - ctest
@@ -49,25 +36,12 @@ gcc_w/_OpenBLAS:
   - git submodule sync --recursive
   - git submodule update --init --recursive
   - export LD_LIBRARY_PATH=/opt/OpenBLAS/lib/libopenblas_armv8p-r0.3.10.dev.so
-  - cd src/cpu/aarch64/xbyak_translator_aarch64/translator/third_party/
-  - mkdir build_xed_aarch64
-  - cd build_xed_aarch64/
-  - ../xed/mfile.py --shared examples install
-  - cd kits/
-  - XED=`ls | grep install`
-  - ln -sf $XED xed
-  - cd xed/
-  - XED_ROOT=`pwd`
-  - cd bin/
-  - CI_XED_PATH=`pwd`
-  - cd ../lib/
-  - CI_XED_LIB=`pwd`
-  - cd ../../../../../../../../../../
+  - ./build_xed.sh
   - export LD_LIBRARY_PATH=${CI_XED_LIB}:${LD_LIBRARY_PATH}
   - export XED_ROOT_DIR=${XED_ROOT}
   - mkdir build_aarch64
   - cd build_aarch64/
-  - cmake .. -DWITH_BLAS=openblas
+  - cmake -DDNNL_INDIRECT_JIT_AARCH64=ON -DWITH_BLAS=openblas ..
   - make -j48
   - cd tests/gtests
   - ctest
@@ -88,25 +62,12 @@ fcc_w/o_SSL2:
   - export LD_LIBRARY_PATH=/opt/FJSVstclanga/v1.0.0/lib64:/usr/lib64/libcblas.so
   - export CC="fcc -Nclang -Knolargepage"
   - export CXX="FCC -Nclang -Knolargepage" 
-  - cd src/cpu/aarch64/xbyak_translator_aarch64/translator/third_party/
-  - mkdir build_xed_aarch64
-  - cd build_xed_aarch64/
-  - ../xed/mfile.py --shared examples install
-  - cd kits/
-  - XED=`ls | grep install`
-  - ln -sf $XED xed
-  - cd xed/
-  - XED_ROOT=`pwd`
-  - cd bin/
-  - CI_XED_PATH=`pwd`
-  - cd ../lib/
-  - CI_XED_LIB=`pwd`
-  - cd ../../../../../../../../../../
+  - ./build_xed.sh
   - export LD_LIBRARY_PATH=${CI_XED_LIB}:${LD_LIBRARY_PATH}
   - export XED_ROOT_DIR=${XED_ROOT}  
   - mkdir build_aarch64
   - cd build_aarch64/
-  - cmake ..
+  - cmake -DDNNL_INDIRECT_JIT_AARCH64=ON ..
   - make -j48
   - cd tests/gtests
   - ctest
@@ -127,29 +88,16 @@ fcc_w/_SSL2:
   - export LD_LIBRARY_PATH=/opt/FJSVstclanga/v1.0.0/lib64:/usr/lib64/libcblas.so
   - export CC="fcc -Nclang -Knolargepage"
   - export CXX="FCC -Nclang -Knolargepage" 
-  - cd src/cpu/aarch64/xbyak_translator_aarch64/translator/third_party/
-  - mkdir build_xed_aarch64
-  - cd build_xed_aarch64/
-  - ../xed/mfile.py --shared examples install
-  - cd kits/
-  - XED=`ls | grep install`
-  - ln -sf $XED xed
-  - cd xed/
-  - XED_ROOT=`pwd`
-  - cd bin/
-  - CI_XED_PATH=`pwd`
-  - cd ../lib/
-  - CI_XED_LIB=`pwd`
-  - cd ../../../../../../../../../../
+  - ./build_xed.sh
   - export LD_LIBRARY_PATH=${CI_XED_LIB}:${LD_LIBRARY_PATH}
   - export XED_ROOT_DIR=${XED_ROOT}  
   - mkdir build_aarch64
   - cd build_aarch64/
-  - cmake .. -DWITH_BLAS=ssl2 
+  - cmake -DDNNL_INDIRECT_JIT_AARCH64=ON -DWITH_BLAS=ssl2 ..
   - make -j48
   - cd tests/gtests
   - FLIB_SCCR_CNTL=FALSE ctest -j 4
-  - ctest
+#  - ctest
 #  - ctest -R test_concat
 #  - cd ../benchdnn
 #  - ./benchdnn --conv --batch=inputs/conv_resnet_50
