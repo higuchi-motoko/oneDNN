@@ -15,19 +15,14 @@
 # limitations under the License.
 #*******************************************************************************/
 
+export ONEDNN_ROOT_DIR=`pwd`
 cd src/cpu/aarch64/xbyak_translator_aarch64/translator/third_party/
 mkdir build_xed_aarch64
 cd build_xed_aarch64/
-../xed/mfile.py --shared examples install
+../xed/mfile.py --host-cpu=aarch64 --shared install
 cd kits/
 XED=`ls | grep install`
 ln -sf $XED xed
-cd xed/
-XED_ROOT=`pwd`
-cd bin/
-CI_XED_PATH=`pwd`
-cd ../lib/
-CI_XED_LIB=`pwd`
-cd ../../../../../../../../../../
-export LD_LIBRARY_PATH=${CI_XED_LIB}:${LD_LIBRARY_PATH}
-export XED_ROOT_DIR=${XED_ROOT}
+cd xed
+export XED_ROOT_DIR=`pwd`
+cd ${ONEDNN_ROOT_DIR}    
