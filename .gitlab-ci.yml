@@ -78,8 +78,8 @@ fcc_w/o_SSL2:
   script:
   - git submodule sync --recursive
   - git submodule update --init --recursive
-  - PATH=${PATH}:/opt/FJSVstclanga/v1.0.0/bin
-  - export LD_LIBRARY_PATH=/opt/FJSVstclanga/v1.0.0/lib64:/usr/lib64/libcblas.so.3
+  - PATH=${PATH}:/opt/FJSVstclanga/v1.1.0/bin
+  - export LD_LIBRARY_PATH=/opt/FJSVstclanga/v1.1.0/lib64:/usr/lib64/libcblas.so.3
   - export CC="fcc -Nclang -Knolargepage -Kopenmp"
   - export CXX="FCC -Nclang -Knolargepage -Kopenmp"
   - export ONEDNN_ROOT_DIR=`pwd`
@@ -113,8 +113,8 @@ fcc_w/_SSL2:
   script:
   - git submodule sync --recursive
   - git submodule update --init --recursive
-  - PATH=${PATH}:/opt/FJSVstclanga/v1.0.0/bin
-  - export LD_LIBRARY_PATH=/opt/FJSVstclanga/v1.0.0/lib64:/usr/lib64/libcblas.so.3
+  - PATH=${PATH}:/opt/FJSVstclanga/v1.1.0/bin
+  - export LD_LIBRARY_PATH=/opt/FJSVstclanga/v1.1.0/lib64:/usr/lib64/libcblas.so.3
   - export CC="fcc -Nclang -Knolargepage -Kopenmp"
   - export CXX="FCC -Nclang -Knolargepage -Kopenmp"
   - export ONEDNN_ROOT_DIR=`pwd`
