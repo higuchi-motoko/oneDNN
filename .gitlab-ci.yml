@@ -6,71 +6,71 @@ stages:
     
 before_script:
 
-gcc_w/o_OpenBLAS:
-  stage: test
-  image: c4b91d43773a
-  script:
-  - git submodule sync --recursive
-  - git submodule update --init --recursive
-  - export LD_LIBRARY_PATH=/opt/OpenBLAS/lib/libopenblas_armv8p-r0.3.10.dev.so
-  - export ONEDNN_ROOT_DIR=`pwd`
-  - cd src/cpu/aarch64/xbyak_translator_aarch64/translator/third_party/
-  - mkdir build_xed_aarch64
-  - cd build_xed_aarch64/
-  - ../xed/mfile.py --host-cpu=aarch64 --shared install
-  - cd kits/
-  - XED=`ls | grep install`
-  - ln -sf $XED xed
-  - cd xed
-  - export XED_ROOT_DIR=`pwd`
-  - cd ${ONEDNN_ROOT_DIR}
-  - export LD_LIBRARY_PATH=${XED_ROOT_DIR}/lib:${LD_LIBRARY_PATH}
-  - echo $XED_ROOT_DIR
-  - echo $LD_LIBRARY_PATH
-  - mkdir build_aarch64
-  - cd build_aarch64
-  - cmake -DDNNL_INDIRECT_JIT_AARCH64=ON .. 
-  - make -j48
-  - cd tests/gtests
-  - ctest
-#  - ctest -R test_concat
-#  - cd ../benchdnn
-#  - ./benchdnn --conv --batch=inputs/conv_resnet_50
-#  - ./benchdnn --bnorm --batch=inputs/bnorm/bnorm_resnet_50
-#  tags:
-#    - instruction_unit
+#gcc_w/o_OpenBLAS:
+#  stage: test
+#  image: c4b91d43773a
+#  script:
+#  - git submodule sync --recursive
+#  - git submodule update --init --recursive
+#  - export LD_LIBRARY_PATH=/opt/OpenBLAS/lib/libopenblas_armv8p-r0.3.10.dev.so
+#  - export ONEDNN_ROOT_DIR=`pwd`
+#  - cd src/cpu/aarch64/xbyak_translator_aarch64/translator/third_party/
+#  - mkdir build_xed_aarch64
+#  - cd build_xed_aarch64/
+#  - ../xed/mfile.py --host-cpu=aarch64 --shared install
+#  - cd kits/
+#  - XED=`ls | grep install`
+#  - ln -sf $XED xed
+#  - cd xed
+#  - export XED_ROOT_DIR=`pwd`
+#  - cd ${ONEDNN_ROOT_DIR}
+#  - export LD_LIBRARY_PATH=${XED_ROOT_DIR}/lib:${LD_LIBRARY_PATH}
+#  - echo $XED_ROOT_DIR
+#  - echo $LD_LIBRARY_PATH
+#  - mkdir build_aarch64
+#  - cd build_aarch64
+#  - cmake -DDNNL_INDIRECT_JIT_AARCH64=ON ..
+#  - make -j48
+#  - cd tests/gtests
+#  - ctest
+##  - ctest -R test_concat
+##  - cd ../benchdnn
+##  - ./benchdnn --conv --batch=inputs/conv_resnet_50
+##  - ./benchdnn --bnorm --batch=inputs/bnorm/bnorm_resnet_50
+##  tags:
+##    - instruction_unit
 
-gcc_w/_OpenBLAS:
-  stage: test
-  image: c4b91d43773a
-  script:
-  - git submodule sync --recursive
-  - git submodule update --init --recursive
-  - export LD_LIBRARY_PATH=/opt/OpenBLAS/lib/libopenblas_armv8p-r0.3.10.dev.so
-  - export ONEDNN_ROOT_DIR=`pwd`
-  - cd src/cpu/aarch64/xbyak_translator_aarch64/translator/third_party/
-  - mkdir build_xed_aarch64
-  - cd build_xed_aarch64/
-  - ../xed/mfile.py --host-cpu=aarch64 --shared install
-  - cd kits/
-  - XED=`ls | grep install`
-  - ln -sf $XED xed
-  - cd xed
-  - export XED_ROOT_DIR=`pwd`
-  - cd ${ONEDNN_ROOT_DIR}  
-  - export LD_LIBRARY_PATH=${XED_ROOT_DIR}/lib:${LD_LIBRARY_PATH}
-  - mkdir build_aarch64
-  - cd build_aarch64/
-  - cmake -DDNNL_INDIRECT_JIT_AARCH64=ON -DWITH_BLAS=openblas ..
-  - make -j48
-  - cd tests/gtests
-  - ctest
-#  - ctest -R test_concat
-#  - cd ../benchdnn
-#  - ./benchdnn --conv --batch=inputs/conv_resnet_50
-#  - ./benchdnn --bnorm --batch=inputs/bnorm/bnorm_resnet_50
-#  tags:
-#    - instruction_unit
+#gcc_w/_OpenBLAS:
+#  stage: test
+#  image: c4b91d43773a
+#  script:
+#  - git submodule sync --recursive
+#  - git submodule update --init --recursive
+#  - export LD_LIBRARY_PATH=/opt/OpenBLAS/lib/libopenblas_armv8p-r0.3.10.dev.so
+#  - export ONEDNN_ROOT_DIR=`pwd`
+#  - cd src/cpu/aarch64/xbyak_translator_aarch64/translator/third_party/
+#  - mkdir build_xed_aarch64
+#  - cd build_xed_aarch64/
+#  - ../xed/mfile.py --host-cpu=aarch64 --shared install
+#  - cd kits/
+#  - XED=`ls | grep install`
+#  - ln -sf $XED xed
+#  - cd xed
+#  - export XED_ROOT_DIR=`pwd`
+#  - cd ${ONEDNN_ROOT_DIR}
+#  - export LD_LIBRARY_PATH=${XED_ROOT_DIR}/lib:${LD_LIBRARY_PATH}
+#  - mkdir build_aarch64
+#  - cd build_aarch64/
+#  - cmake -DDNNL_INDIRECT_JIT_AARCH64=ON -DWITH_BLAS=openblas ..
+#  - make -j48
+#  - cd tests/gtests
+#  - ctest
+##  - ctest -R test_concat
+##  - cd ../benchdnn
+##  - ./benchdnn --conv --batch=inputs/conv_resnet_50
+##  - ./benchdnn --bnorm --batch=inputs/bnorm/bnorm_resnet_50
+##  tags:
+##    - instruction_unit
 
 fcc_w/o_SSL2:
   stage: test
@@ -127,7 +127,7 @@ fcc_w/_SSL2:
   - ln -sf $XED xed
   - cd xed
   - export XED_ROOT_DIR=`pwd`
-  - cd ${ONEDNN_ROOT_DIR}  
+  - cd ${ONEDNN_ROOT_DIR}
   - export LD_LIBRARY_PATH=${XED_ROOT_DIR}/lib:${LD_LIBRARY_PATH}
   - mkdir build_aarch64
   - cd build_aarch64/
