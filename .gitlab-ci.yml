@@ -99,7 +99,7 @@ fcc_w/o_SSL2:
   - cmake -DDNNL_INDIRECT_JIT_AARCH64=ON ..
   - make -j48
   - cd tests/gtests
-  - ctest
+  - ctest -j 4
 #  - ctest -R test_concat
 #  - cd ../benchdnn
 #  - ./benchdnn --conv --batch=inputs/conv_resnet_50
@@ -114,7 +114,7 @@ fcc_w/_SSL2:
   - git submodule sync --recursive
   - git submodule update --init --recursive
   - PATH=${PATH}:/opt/FJSVstclanga/v1.1.0/bin
-  - export LD_LIBRARY_PATH=/opt/FJSVstclanga/v1.1.0/lib64:/usr/lib64/libcblas.so.3
+#  - export LD_LIBRARY_PATH=/opt/FJSVstclanga/v1.1.0/lib64:/usr/lib64/libcblas.so.3
   - export CC="fcc -Nclang -Knolargepage -Kopenmp"
   - export CXX="FCC -Nclang -Knolargepage -Kopenmp"
   - export ONEDNN_ROOT_DIR=`pwd`
@@ -134,7 +134,7 @@ fcc_w/_SSL2:
   - cmake -DDNNL_INDIRECT_JIT_AARCH64=ON -DWITH_BLAS=ssl2 ..
   - make -j48
   - cd tests/gtests
-  - FLIB_SCCR_CNTL=FALSE ctest -j 4
+  - ctest -j 4
 #  - ctest
 #  - ctest -R test_concat
 #  - cd ../benchdnn
