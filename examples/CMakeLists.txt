@@ -60,8 +60,8 @@ foreach(src ${sources})
         register_exe(${example_name} ${src} "" ${LIBM})
 
         # Adding test for CPU
-        add_test("cpu-${example_name}" "${example_name}" cpu)
-        maybe_configure_windows_test("cpu-${example_name}" TEST)
+        add_test("cpu-${example_name}" ${DNNL_QEMU} "${example_name}" cpu)
+        maybe_configure_windows_test("cpu-${example_name}" ${QEMU_CMD} TEST)
 
         # Adding test for GPU
         if (NOT DNNL_GPU_RUNTIME STREQUAL "NONE")
