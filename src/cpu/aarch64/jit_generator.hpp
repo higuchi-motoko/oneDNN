@@ -191,8 +191,8 @@ public:
       the floating point register
      */
     template <typename Vmm>
-    void init_saturate_f32(Vmm vmm_lbound, Vmm vmm_ubound, Xbyak::Reg64 reg_tmp,
-            data_type_t idt, data_type_t odt) {
+    void init_saturate_f32(Vmm vmm_lbound, Vmm vmm_ubound,
+            Xbyak_aarch64::XReg reg_tmp, data_type_t idt, data_type_t odt) {
         using namespace data_type;
         if (!((idt == f32) && utils::one_of(odt, u8, s8, s32))) return;
 
@@ -201,54 +201,57 @@ public:
         // No need to saturate on lower bound for signed integer types, as
         // the conversion to int would return INT_MIN, and then proper
         // saturation will happen in store_data
-        if (odt == u8) uni_vpxor(vmm_lbound, vmm_lbound, vmm_lbound);
+        if (odt == u8) {
+            if (mayiuse(sve_512))
+                dup(Xbyak_aarch64::ZRegS(vmm_lbound.getIdx()), 0);
+            else if (mayiuse(simdfp))
+                movi(Xbyak_aarch64::VReg4S(vmm_lbound.getIdx()), 0);
+            else
+                assert(!"unreachable");
+        }
 
-        Xbyak::Xmm tmp(vmm_ubound.getIdx());
+        Xbyak_aarch64::ZRegS z_tmp(vmm_ubound.getIdx());
+        Xbyak_aarch64::WReg w_tmp(reg_tmp.getIdx());
         float saturation_ubound = types::max_value<float>(odt);
-        mov(reg_tmp, float2int(saturation_ubound));
-        uni_vmovq(tmp, reg_tmp);
-        if (vmm_ubound.isYMM() || vmm_ubound.isZMM())
-            uni_vbroadcastss(vmm_ubound, tmp);
-        else
-            uni_vshufps(vmm_ubound, tmp, tmp, 0);
+        mov_imm(w_tmp, float2int(saturation_ubound));
+        dup(z_tmp, w_tmp);
     }
 
-    // This function is used to saturate to odt in f32 before converting to s32
-    // in order to avoid bad saturation due to cvtps2dq behavior (it returns
-    // INT_MIN if the f32 is out of the s32 range)
     template <typename Vmm>
     void saturate_f32(const Vmm &vmm, const Vmm &vmm_lbound,
-            const Vmm &vmm_ubound, const Vmm &vmm_tmp, data_type_t odt) {
+            const Vmm &vmm_ubound, data_type_t odt,
+            const Xbyak_aarch64::PReg &p_true) {
+        // This function is used to saturate to odt in f32 before converting
+        // to s32 in order to avoid bad saturation due to cvtps2dq
+        // behavior (it returns INT_MIN if the f32 is out of the
+        // s32 range)
         using namespace data_type;
         if (!utils::one_of(odt, u8, s8, s32)) return;
 
-        // no need to apply lower saturation bound when odt is signed, as
-        // cvtps2dq will return MIN_INT if the value does not fit.
-        // The comment below for a certain order applied for maxps instruction
-        // as well. No changes here since NaN with positive sign was not met
-        // yet.
-        if (odt == u8) {
-            if (mayiuse(avx))
-                vmaxps(vmm, vmm, vmm_lbound);
-            else
-                maxps(vmm, vmm_lbound);
-        }
+        Xbyak_aarch64::VReg4S v_tmp(vmm.getIdx());
+        Xbyak_aarch64::VReg4S v_lbound(vmm_lbound.getIdx());
+        Xbyak_aarch64::VReg4S v_ubound(vmm_ubound.getIdx());
+        Xbyak_aarch64::ZRegS z_tmp(vmm.getIdx());
+        Xbyak_aarch64::ZRegS z_lbound(vmm_lbound.getIdx());
+        Xbyak_aarch64::ZRegS z_ubound(vmm_ubound.getIdx());
 
-        // Order matters for minps due to peculiar behavior of the instruction
-        // with NaNs:
-        //     if (SRC1 == NaN)
-        //         return SRC2;
-        //     else if (SRC2 == NaN)
-        //         return SRC2;
-        // that's why we keep user's data at SRC2 reg to pass NaNs further to
-        // cvtps2dq which handles them properly.
-        if (mayiuse(avx))
-            vminps(vmm, vmm_ubound, vmm);
-        else {
-            movups(vmm_tmp, vmm_ubound);
-            minps(vmm_tmp, vmm);
-            movups(vmm, vmm_tmp);
+        // no need to apply lower saturation bound when odt is
+        // signed, as cvtps2dq will return MIN_INT if the value
+        // does not fit
+        if (odt == u8) {
+            if (mayiuse(sve_512))
+                fmax(z_tmp, p_true / Xbyak_aarch64::T_m, z_lbound);
+            else if (mayiuse(simdfp))
+                fmax(v_tmp, v_tmp, v_lbound);
+            else
+                assert(!"unreachable");
         }
+        if (mayiuse(sve_512))
+            fmin(z_tmp, p_true / Xbyak_aarch64::T_m, z_ubound);
+        else if (mayiuse(simdfp))
+            fmin(v_tmp, v_tmp, v_ubound);
+        else
+            assert(!"unreachable");
     }
 
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_generator);
