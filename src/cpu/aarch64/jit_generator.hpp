@@ -297,7 +297,9 @@ private:
     }
 
     static inline bool is_initialized() {
-        return Xbyak::GetError() == Xbyak::ERR_NONE;
+        /* At the moment, Xbyak_aarch64 does not have GetError()\
+	 so that return dummy result. */
+        return true;
     }
 
 protected:
