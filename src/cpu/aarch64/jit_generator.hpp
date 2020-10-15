@@ -125,29 +125,54 @@ public:
     inline size_t get_size_of_abi_save_regs() { return size_of_abi_save_regs; }
 
     void preamble() {
-        if (xmm_to_preserve) {
-            sub(rsp, xmm_to_preserve * xmm_len);
-            for (size_t i = 0; i < xmm_to_preserve; ++i)
-                movdqu(ptr[rsp + i * xmm_len],
-                        Xbyak::Xmm(xmm_to_preserve_start + i));
+        stp(x29, x30, pre_ptr(sp, -16));
+        /* x29 is a frame pointer. */
+        mov(x29, sp);
+        sub(sp, sp, static_cast<int64_t>(preserved_stack_size) - 16);
+
+        /* x9 can be used as a temporal register. */
+        mov(x9, sp);
+
+        if (vreg_to_preserve) {
+            st4((v8.d - v11.d)[0], post_ptr(x9, vreg_len_preserve * 4));
+            st4((v12.d - v15.d)[0], post_ptr(x9, vreg_len_preserve * 4));
         }
-        for (size_t i = 0; i < num_abi_save_gpr_regs; ++i)
-            push(Xbyak::Reg64(abi_save_gpr_regs[i]));
-        if (mayiuse(avx512_common)) {
-            mov(reg_EVEX_max_8b_offt, 2 * EVEX_max_8b_offt);
+        for (size_t i = 0; i < num_abi_save_gpr_regs; i += 2) {
+            stp(Xbyak_aarch64::XReg(abi_save_gpr_regs[i]),
+                    Xbyak_aarch64::XReg(abi_save_gpr_regs[i + 1]),
+                    post_ptr(x9, xreg_len * 2));
         }
+
+        ptrue(P_ALL_ONE.b);
+        ptrue(P_MSB_384.b, Xbyak_aarch64::VL16);
+        ptrue(P_MSB_256.b, Xbyak_aarch64::VL32);
+        not_(P_MSB_384.b, P_ALL_ONE / Xbyak_aarch64::T_z, P_MSB_384.b);
+        not_(P_MSB_256.b, P_ALL_ONE / Xbyak_aarch64::T_z, P_MSB_256.b);
+        pfalse(P_ALL_ZERO.b);
     }
 
     void postamble() {
-        for (size_t i = 0; i < num_abi_save_gpr_regs; ++i)
-            pop(Xbyak::Reg64(abi_save_gpr_regs[num_abi_save_gpr_regs - 1 - i]));
-        if (xmm_to_preserve) {
-            for (size_t i = 0; i < xmm_to_preserve; ++i)
-                movdqu(Xbyak::Xmm(xmm_to_preserve_start + i),
-                        ptr[rsp + i * xmm_len]);
-            add(rsp, xmm_to_preserve * xmm_len);
+        mov(x9, sp);
+        eor(P_ALL_ONE.b, P_ALL_ONE / Xbyak_aarch64::T_z, P_ALL_ONE.b,
+                P_ALL_ONE.b);
+        eor(P_MSB_384.b, P_MSB_384 / Xbyak_aarch64::T_z, P_MSB_384.b,
+                P_MSB_384.b);
+        eor(P_MSB_256.b, P_MSB_256 / Xbyak_aarch64::T_z, P_MSB_256.b,
+                P_MSB_256.b);
+
+        if (vreg_to_preserve) {
+            ld4((v8.d - v11.d)[0], post_ptr(x9, vreg_len_preserve * 4));
+            ld4((v12.d - v15.d)[0], post_ptr(x9, vreg_len_preserve * 4));
         }
-        uni_vzeroupper();
+
+        for (size_t i = 0; i < num_abi_save_gpr_regs; i += 2) {
+            ldp(Xbyak_aarch64::XReg(abi_save_gpr_regs[i]),
+                    Xbyak_aarch64::XReg(abi_save_gpr_regs[i + 1]),
+                    post_ptr(x9, xreg_len * 2));
+        }
+
+        add(sp, sp, static_cast<int64_t>(preserved_stack_size) - 16);
+        ldp(x29, x30, post_ptr(sp, 16));
         ret();
     }
 
