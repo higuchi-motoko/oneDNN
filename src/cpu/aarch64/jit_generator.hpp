@@ -178,9 +178,11 @@ public:
 
     // Disallow char-based labels completely
     void L(const char *label) = delete;
-    void L(Xbyak::Label &label) { Xbyak::CodeGenerator::L(label); }
+    void L(Xbyak_aarch64::Label &label) {
+        Xbyak_aarch64::CodeGenerator::L(label);
+    }
 
-    void L_aligned(Xbyak::Label &label, int alignment = 16) {
+    void L_aligned(Xbyak_aarch64::Label &label, int alignment = 16) {
         align(alignment);
         L(label);
     }
@@ -259,9 +261,7 @@ public:
 public:
     jit_generator(void *code_ptr = nullptr, size_t code_size = MAX_CODE_SIZE,
             bool use_autogrow = true)
-        : Xbyak::CodeGenerator(code_size,
-                (code_ptr == nullptr && use_autogrow) ? Xbyak::AutoGrow
-                                                      : code_ptr) {}
+        : Xbyak_aarch64::CodeGenerator(code_size, code_ptr) {}
     virtual ~jit_generator() {}
 
     virtual const char *name() const = 0;
