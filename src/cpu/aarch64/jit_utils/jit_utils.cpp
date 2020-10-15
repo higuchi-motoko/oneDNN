@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2019-2020 Intel Corporation
+* Copyright 2020 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,25 +19,14 @@
 
 #include "common/utils.hpp"
 
-#ifndef DNNL_ENABLE_JIT_PROFILING
-#define DNNL_ENABLE_JIT_PROFILING 1
-#endif
-
 #ifndef DNNL_ENABLE_JIT_DUMP
 #define DNNL_ENABLE_JIT_DUMP 1
-#endif
-
-#if DNNL_ENABLE_JIT_PROFILING
-#include "cpu/x64/jit_utils/jitprofiling/jitprofiling.h"
-#ifdef __linux__
-#include "cpu/x64/jit_utils/linux_perf/linux_perf.hpp"
-#endif
 #endif
 
 namespace dnnl {
 namespace impl {
 namespace cpu {
-namespace x64 {
+namespace aarch64 {
 namespace jit_utils {
 
 // WARNING: These functions are not thread safe and must be protected by a
@@ -71,48 +61,6 @@ void dump_jit_code(const void *code, size_t code_size, const char *code_name) {
 #endif
 }
 
-void register_jit_code_vtune(const void *code, size_t code_size,
-        const char *code_name, const char *source_file_name) {
-#if DNNL_ENABLE_JIT_PROFILING
-    unsigned flags = get_jit_profiling_flags();
-    if ((flags & DNNL_JIT_PROFILE_VTUNE)
-            && iJIT_IsProfilingActive() == iJIT_SAMPLING_ON) {
-        auto jmethod = iJIT_Method_Load();
-        jmethod.method_id = iJIT_GetNewMethodID(); // XXX: not thread-safe
-        jmethod.method_name = (char *)code_name; // XXX: dropping const
-        jmethod.class_file_name = nullptr;
-        jmethod.source_file_name
-                = (char *)source_file_name; // XXX: dropping const
-        jmethod.method_load_address = (void *)code;
-        jmethod.method_size = (unsigned int)code_size;
-
-        iJIT_NotifyEvent(
-                iJVM_EVENT_TYPE_METHOD_LOAD_FINISHED, (void *)&jmethod);
-    }
-#else
-    UNUSED(code);
-    UNUSED(code_size);
-    UNUSED(code_name);
-    UNUSED(source_file_name);
-#endif
-}
-
-void register_jit_code_linux_perf(const void *code, size_t code_size,
-        const char *code_name, const char *source_file_name) {
-#if DNNL_ENABLE_JIT_PROFILING && defined(__linux__)
-    unsigned flags = get_jit_profiling_flags();
-    if (flags & DNNL_JIT_PROFILE_LINUX_JITDUMP)
-        linux_perf_jitdump_record_code_load(code, code_size, code_name);
-    if (flags & DNNL_JIT_PROFILE_LINUX_PERFMAP)
-        linux_perf_perfmap_record_code_load(code, code_size, code_name);
-#else
-    UNUSED(code);
-    UNUSED(code_size);
-    UNUSED(code_name);
-#endif
-    UNUSED(source_file_name);
-}
-
 void register_jit_code(const void *code, size_t code_size,
         const char *code_name, const char *source_file_name) {
     // The #ifdef guards are required to avoid generating a function that only
@@ -121,9 +69,8 @@ void register_jit_code(const void *code, size_t code_size,
     static std::mutex m;
     std::lock_guard<std::mutex> guard(m);
 
-    dump_jit_code(code, code_size, code_name);
-    register_jit_code_vtune(code, code_size, code_name, source_file_name);
-    register_jit_code_linux_perf(code, code_size, code_name, source_file_name);
+    dump_jit_code(
+            code, code_size * sizeof(uint32_t) / sizeof(uint8_t), code_name);
 #else
     UNUSED(code);
     UNUSED(code_size);
@@ -133,7 +80,7 @@ void register_jit_code(const void *code, size_t code_size,
 }
 
 } // namespace jit_utils
-} // namespace x64
+} // namespace aarch64
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl
