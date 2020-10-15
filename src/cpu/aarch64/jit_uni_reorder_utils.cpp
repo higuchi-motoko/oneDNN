@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2018-2020 Intel Corporation
+* Copyright 2020 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,7 +25,7 @@
 #include "common/utils.hpp"
 #include "dnnl_debug.h"
 
-#include "cpu/x64/jit_uni_reorder.hpp"
+#include "cpu/aarch64/jit_uni_reorder.hpp"
 
 using namespace dnnl::impl::types;
 using namespace dnnl::impl::status;
@@ -32,7 +33,7 @@ using namespace dnnl::impl::status;
 namespace dnnl {
 namespace impl {
 namespace cpu {
-namespace x64 {
+namespace aarch64 {
 
 namespace tr {
 
@@ -303,7 +304,7 @@ void prb_dump(const prb_t &p) {
 
 } // namespace tr
 
-} // namespace x64
+} // namespace aarch64
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl

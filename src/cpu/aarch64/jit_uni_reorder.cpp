@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2018-2020 Intel Corporation
+* Copyright 2020 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -26,12 +27,11 @@
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
+#include "cpu/aarch64/jit_uni_reorder.hpp"
 #include "cpu/cpu_primitive.hpp"
 #include "cpu/cpu_reorder_pd.hpp"
-#include "cpu/x64/jit_uni_reorder.hpp"
 
-#include "cpu/x64/jit_avx512_core_bf16cvt.hpp"
-#include "cpu/x64/jit_generator.hpp"
+#include "cpu/aarch64/jit_generator.hpp"
 
 // #define TR_DEBUG
 #if defined(TR_DEBUG)
@@ -52,13 +52,13 @@ constexpr static bool is_windows = true;
 constexpr static bool is_windows = false;
 #endif
 
-using namespace Xbyak;
+using namespace Xbyak_aarch64;
 using namespace dnnl::impl::types;
 
 namespace dnnl {
 namespace impl {
 namespace cpu {
-namespace x64 {
+namespace aarch64 {
 
 namespace tr {
 
@@ -844,12 +844,12 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         }
     }
 
-    void loop_begin(Label &l, Reg64 reg_cnt, int len) {
+    void loop_begin(Label &l, XReg reg_cnt, int len) {
         mov(reg_cnt, len);
         L(l);
     }
 
-    void loop_end(Label &l, Reg64 reg_cnt, int len, int i_step, int o_step,
+    void loop_end(Label &l, XReg reg_cnt, int len, int i_step, int o_step,
             int s_step) {
         add(reg_off_in, i_step * itype_sz);
         add(reg_off_out, o_step * otype_sz);
@@ -879,7 +879,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
             xor_(reg_off_scale, reg_off_scale);
 
         Label l_loop[3];
-        Reg64 reg_cnt[3] = {r15, r14, r13};
+        XReg reg_cnt[3] = {x15, x14, x13};
 
         if (n_jit_loops > 2) loop_begin(l_loop[2], reg_cnt[2], n(nfu + 2));
 
@@ -1827,7 +1827,7 @@ status_t jit_uni_reorder_create(reorder_pd_t **reorder_pd, engine_t *engine,
     return ret;
 }
 
-} // namespace x64
+} // namespace aarch64
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl
