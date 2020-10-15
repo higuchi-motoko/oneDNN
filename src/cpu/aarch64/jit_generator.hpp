@@ -267,11 +267,11 @@ public:
     virtual const char *name() const = 0;
     virtual const char *source_file() const = 0;
 
-    void register_jit_code(const Xbyak::uint8 *code, size_t code_size) const {
+    void register_jit_code(const uint8_t *code, size_t code_size) const {
         jit_utils::register_jit_code(code, code_size, name(), source_file());
     }
 
-    const Xbyak::uint8 *jit_ker() const { return jit_ker_; }
+    const uint8_t *jit_ker() const { return jit_ker_; }
 
     template <typename... kernel_args_t>
     void operator()(kernel_args_t... args) const {
@@ -287,10 +287,11 @@ public:
     }
 
 private:
-    const Xbyak::uint8 *getCode() {
+    const uint8_t *getCode() {
         this->ready();
         if (!is_initialized()) return nullptr;
-        const Xbyak::uint8 *code = CodeGenerator::getCode();
+        const uint8_t *code
+                = reinterpret_cast<const uint8_t *>(CodeGenerator::getCode());
         register_jit_code(code, getSize());
         return code;
     }
@@ -301,7 +302,7 @@ private:
 
 protected:
     virtual void generate() = 0;
-    const Xbyak::uint8 *jit_ker_ = nullptr;
+    const uint8_t *jit_ker_ = nullptr;
 };
 
 } // namespace aarch64
