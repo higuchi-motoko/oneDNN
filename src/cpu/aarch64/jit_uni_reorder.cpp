@@ -153,10 +153,6 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         return (int)prb_.nodes[d].ss;
     }
 
-    Address s_addr(int s_off) {
-        return ptr[reg_ptr_scale + reg_off_scale + s_off * stype_sz];
-    }
-
     void step(int off, int prev_i_off, int prev_o_off, int prev_s_off,
             int &i_off, int &o_off, int &s_off, int step_size = 1) {
         i_off = prev_i_off;
@@ -728,9 +724,13 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
                             scale_load_type = scale_load_type_t::load;
 
                     if (scale_load_type == scale_load_type_t::bcast) {
-                        movss(xmm_scale, s_addr(s_off[ur]));
-                        shufps(xmm_scale, xmm_scale, 0x0);
-                        mulps(Xmm(ur), xmm_scale);
+                        VReg4S v(xmm_scale.getIdx());
+                        VReg4S v_dst(ur);
+                        add_imm(X_TMP_0, x_ptr_scale_off, s_off[ur] * stype_sz,
+                                X_DEFAULT_ADDR);
+                        ldr(W_TMP_0, ptr(X_TMP_0));
+                        dup(v, W_TMP_0);
+                        fmul(v_dst, v_dst, v);
                         continue;
                     }
 
@@ -740,16 +740,29 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
                             scale_load_type = scale_load_type_t::gather;
 
                     if (scale_load_type == scale_load_type_t::load) {
-                        movups(xmm_scale, s_addr(s_off[ur]));
-                        mulps(Xmm(ur), xmm_scale);
+                        uint32_t idx = xmm_scale.getIdx();
+                        VReg4S v_dst(ur);
+                        add_imm(X_TMP_0, x_ptr_scale_off, s_off[ur] * stype_sz,
+                                X_DEFAULT_ADDR);
+                        ldr(QReg {idx}, ptr(X_TMP_0));
+                        fmul(v_dst, v_dst, VReg4S {idx});
                         continue;
                     }
 
                     // load doesn't work as well
                     // so gather the scale factors one by one
-                    for (int r = ur; r < ur + ur_step; ++r)
-                        pinsrd(xmm_scale, s_addr(s_off[r]), r - ur);
-                    mulps(Xmm(ur), xmm_scale);
+                    /*ur_step is 1 or 4. */
+                    for (int r = ur; r < ur + ur_step; ++r) {
+                        /* x_tmp_vec = X_TMP_0 - X_TMP_4 
+			 Do not use X_TMP_? as the last arg. */
+                        add_imm(x_tmp_vec[r - ur], x_ptr_scale_off,
+                                s_off[r] * stype_sz, X_DEFAULT_ADDR);
+                    }
+                    for (int r = ur; r < ur + ur_step; ++r) {
+                        VReg4S v(xmm_scale.getIdx());
+                        ld1(v[r - ur], ptr(x_tmp_vec[r - ur]));
+                    }
+                    fmul(VReg4S(ur), VReg4S(ur), xmm_scale);
                 }
             }
 
@@ -802,8 +815,24 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
                 for (int ur = 0; ur < reg_unroll; ur += ur_step)
                     mulss(Xmm(ur), xmm_scale);
             } else if (prb_.scale_type == scale_type_t::MANY) {
-                for (int ur = 0; ur < reg_unroll; ur += ur_step) {
-                    mulss(Xmm(ur), s_addr(s_off[ur]));
+                int ur = 0;
+                int tmp_ur = 0;
+                while (ur < reg_unroll) {
+                    int count = 0;
+
+                    do {
+                        add_imm(x_tmp_vec[count++], x_ptr_scale_off,
+                                s_off[ur] * stype_sz, X_DEFAULT_ADDR);
+                        ur += ur_step;
+                    } while (ur < reg_unroll && count < x_tmp_vec_size);
+
+                    for (int i = 0; i < count; i++)
+                        ldr(SReg(tmp_vec_idx[i]), ptr(x_tmp_vec[i]));
+                    for (int i = 0; i < count; i++)
+                        fmul(ZRegS(tmp_ur + ur_step * i), p_lsb_32 / T_m,
+                                ZRegS(tmp_vec_idx[i]));
+
+                    tmp_ur += ur_step * count;
                 }
             }
 
