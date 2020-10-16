@@ -242,26 +242,6 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
             }
         };
 
-        auto load = [=](const Ymm &ymm, const Address &addr, int size) {
-            Xmm xmm = Xmm(ymm.getIdx());
-            switch (size) {
-                case 32: vmovups(ymm, addr); break;
-                case 16: vmovups(xmm, addr); break;
-                case 8: vmovsd(xmm, addr); break;
-                default: assert(!"unreachable");
-            }
-        };
-
-        auto store = [=](const Address &addr, const Ymm &ymm, int size) {
-            Xmm xmm = Xmm(ymm.getIdx());
-            switch (size) {
-                case 32: vmovups(addr, ymm); break;
-                case 16: vmovups(addr, xmm); break;
-                case 8: vmovsd(addr, xmm); break;
-                default: assert(!"unreachable");
-            }
-        };
-
         const int unroll = 8;
 
         const bool interim_f32 = (prb_.itype != f32)
@@ -541,28 +521,6 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
                         cvt_z_s32_u8(startIdx, regNum);
                     if (idt == s8) cvt_z_s8_u8(startIdx, regNum);
                     break;
-                default: assert(!"unreachable");
-            }
-        };
-
-        auto load = [=](const Xmm &xmm, const Address &addr, int size) {
-            switch (size) {
-                case 16: movups(xmm, addr); break;
-                case 8: movsd(xmm, addr); break;
-                case 4: movss(xmm, addr); break;
-                case 2: pinsrw(xmm, addr, 0x0); break;
-                case 1: pinsrb(xmm, addr, 0x0); break;
-                default: assert(!"unreachable");
-            }
-        };
-
-        auto store = [=](const Address &addr, const Xmm &xmm, int size) {
-            switch (size) {
-                case 16: movups(addr, xmm); break;
-                case 8: movsd(addr, xmm); break;
-                case 4: movss(addr, xmm); break;
-                case 2: pextrw(addr, xmm, 0x0); break;
-                case 1: pextrb(addr, xmm, 0x0); break;
                 default: assert(!"unreachable");
             }
         };
