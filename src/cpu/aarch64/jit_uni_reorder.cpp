@@ -206,67 +206,53 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         using namespace data_type;
 
         const auto cvt2ps
-                = [=](const Ymm &dst, const Operand &src, data_type_t idt) {
+                = [=](const int startIdx, const int regNum, data_type_t idt) {
                       switch (idt) {
                           case f32:
-                              if (src.isMEM() || src.getIdx() != dst.getIdx())
-                                  vmovups(dst, src);
+                              // do nothing
                               break;
-                          case s32: vcvtdq2ps(dst, src); break;
+                          case s32: cvt_z_s32_f32(startIdx, regNum); break;
                           case s8:
-                              vpmovsxbd(dst, src);
-                              vcvtdq2ps(dst, dst);
+                              cvt_z_s8_s32(startIdx, regNum);
+                              cvt_z_s32_f32(startIdx, regNum);
                               break;
                           case u8:
-                              vpmovzxbd(dst, src);
-                              vcvtdq2ps(dst, dst);
+                              cvt_z_u8_s32(startIdx, regNum);
+                              cvt_z_s32_f32(startIdx, regNum);
                               break;
                           default: assert(!"unreachable");
                       }
-                  };
 
-        const auto cvt2odt
-                = [=](const Ymm &ymm, data_type_t odt, data_type_t idt) {
-                      Xmm xmm = Xmm(ymm.getIdx());
-                      switch (odt) {
-                          case s32:
-                              if (idt == f32)
-                                  vcvtps2dq(ymm, ymm);
-                              else if (idt == s8)
-                                  vpmovsxbd(ymm, ymm);
-                              else if (idt == u8)
-                                  vpmovzxbd(ymm, ymm);
-                              break;
-                          case s8:
-                              if (idt == f32) vcvtps2dq(ymm, ymm);
-                              if (utils::one_of(idt, f32, s32)) {
-                                  if (mayiuse(avx512_core)) {
-                                      vpmovsdb(xmm, ymm);
-                                  } else {
-                                      vpackssdw(ymm, ymm, ymm_zero);
-                                      vpermq(ymm, ymm, 0x58);
-                                      vpacksswb(ymm, ymm, ymm_zero);
-                                  }
-                              }
-                              if (idt == u8) vpminub(ymm, ymm, ymm_8x127b);
-                              break;
-                          case u8:
-                              if (idt == f32) vcvtps2dq(ymm, ymm);
-                              if (utils::one_of(idt, f32, s32)) {
-                                  if (mayiuse(avx512_core)) {
-                                      vpmaxsd(ymm, ymm, ymm_zero);
-                                      vpmovusdb(xmm, ymm);
-                                  } else {
-                                      vpackssdw(ymm, ymm, ymm_zero);
-                                      vpermq(ymm, ymm, 0x58);
-                                      vpackuswb(ymm, ymm, ymm_zero);
-                                  }
-                              }
-                              if (idt == s8) vpmaxsb(ymm, ymm, ymm_zero);
-                              break;
-                          default: assert(!"unreachable");
+                      for (int i = startIdx; i < startIdx + regNum; i++) {
+                          mov(ZRegS(i), P_MSB_256 / T_m, 0);
                       }
                   };
+        const auto cvt2odt = [=](const int startIdx, const int regNum,
+                                     data_type_t odt, data_type_t idt) {
+            switch (odt) {
+                case s32:
+                    if (idt == f32)
+                        cvt_z_f32_s32(startIdx, regNum);
+                    else if (idt == s8)
+                        cvt_z_s8_s32(startIdx, regNum);
+                    else if (idt == u8)
+                        cvt_z_u8_s32(startIdx, regNum);
+                    break;
+                case s8:
+                    if (idt == f32) cvt_z_f32_s32(startIdx, regNum);
+                    if (utils::one_of(idt, f32, s32))
+                        cvt_z_s32_s8(startIdx, regNum);
+                    if (idt == u8) cvt_z_u8_s8(startIdx, regNum);
+                    break;
+                case u8:
+                    if (idt == f32) cvt_z_f32_s32(startIdx, regNum);
+                    if (utils::one_of(idt, f32, s32))
+                        cvt_z_s32_u8(startIdx, regNum);
+                    if (idt == s8) cvt_z_s8_u8(startIdx, regNum);
+                    break;
+                default: assert(!"unreachable");
+            }
+        };
 
         auto load = [=](const Ymm &ymm, const Address &addr, int size) {
             Xmm xmm = Xmm(ymm.getIdx());
@@ -412,118 +398,50 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
             const int *o_off, const int *s_off) {
         using namespace data_type;
 
-        // TODO: Clean up the code by using "uni" instructions once
-        // jit_generator properly supports avx versions of instructions
-        // on Xmm registers.
-        const auto cvt2ps = [=](const Xmm &dst, const Operand &src,
-                                    data_type_t idt) {
-            Xmm dst_pure = Xmm(dst.getIdx());
-            if (mayiuse(avx)) {
-                switch (idt) {
-                    case f32:
-                        if (src.isMEM() || src.getIdx() != dst.getIdx())
-                            vmovups(dst, src);
-                        break;
-                    case s32: vcvtdq2ps(dst, src); break;
-                    case s8:
-                        vpmovsxbd(dst, src);
-                        vcvtdq2ps(dst_pure, dst);
-                        break;
-                    case u8:
-                        vpmovzxbd(dst, src);
-                        vcvtdq2ps(dst_pure, dst);
-                        break;
-                    default: assert(!"unreachable");
-                }
-            } else {
-                switch (idt) {
-                    case f32:
-                        if (src.isMEM() || src.getIdx() != dst.getIdx())
-                            movups(dst, src);
-                        break;
-                    case s32: cvtdq2ps(dst, src); break;
-                    case s8:
-                        pmovsxbd(dst, src);
-                        cvtdq2ps(dst_pure, dst);
-                        break;
-                    case u8:
-                        pmovzxbd(dst, src);
-                        cvtdq2ps(dst_pure, dst);
-                        break;
-                    default: assert(!"unreachable");
-                }
-            }
-        };
-
-        const auto cvt2odt
-                = [=](const Xmm &xmm, data_type_t odt, data_type_t idt) {
-                      if (mayiuse(avx)) {
-                          switch (odt) {
-                              case s32:
-                                  if (idt == f32)
-                                      vcvtps2dq(xmm, xmm);
-                                  else if (idt == s8)
-                                      vpmovsxbd(xmm, xmm);
-                                  else if (idt == u8)
-                                      vpmovzxbd(xmm, xmm);
-                                  break;
-                              case s8:
-                                  if (idt == f32) vcvtps2dq(xmm, xmm);
-                                  if (utils::one_of(idt, f32, s32)) {
-                                      if (mayiuse(avx512_core)) {
-                                          vpmovsdb(xmm, xmm);
-                                      } else {
-                                          vpackssdw(xmm, xmm, xmm_zero);
-                                          vpacksswb(xmm, xmm, xmm_zero);
-                                      }
-                                  }
-                                  if (idt == u8) vpminub(xmm, xmm, xmm_4x127b);
-                                  break;
-                              case u8:
-                                  if (idt == f32) vcvtps2dq(xmm, xmm);
-                                  if (utils::one_of(idt, f32, s32)) {
-                                      if (mayiuse(avx512_core)) {
-                                          vpmaxsd(xmm, xmm, xmm_zero);
-                                          vpmovusdb(xmm, xmm);
-                                      } else {
-                                          vpackssdw(xmm, xmm, xmm_zero);
-                                          vpackuswb(xmm, xmm, xmm_zero);
-                                      }
-                                  }
-                                  if (idt == s8) vpmaxsb(xmm, xmm, xmm_zero);
-                                  break;
-                              default: assert(!"unreachable");
-                          }
-                      } else {
-                          switch (odt) {
-                              case s32:
-                                  if (idt == f32)
-                                      cvtps2dq(xmm, xmm);
-                                  else if (idt == s8)
-                                      pmovsxbd(xmm, xmm);
-                                  else if (idt == u8)
-                                      pmovzxbd(xmm, xmm);
-                                  break;
-                              case s8:
-                                  if (idt == f32) cvtps2dq(xmm, xmm);
-                                  if (utils::one_of(idt, f32, s32)) {
-                                      packssdw(xmm, xmm_zero);
-                                      packsswb(xmm, xmm_zero);
-                                  }
-                                  if (idt == u8) pminub(xmm, xmm_4x127b);
-                                  break;
-                              case u8:
-                                  if (idt == f32) cvtps2dq(xmm, xmm);
-                                  if (utils::one_of(idt, f32, s32)) {
-                                      packssdw(xmm, xmm_zero);
-                                      packuswb(xmm, xmm_zero);
-                                  }
-                                  if (idt == s8) pmaxsb(xmm, xmm_zero);
-                                  break;
-                              default: assert(!"unreachable");
-                          }
+        auto cvt2ps
+                = [=](const int startIdx, const int regNum, data_type_t idt) {
+                      switch (idt) {
+                          case f32:
+                              // do nothing
+                              break;
+                          case s32: cvt_z_s32_f32(startIdx, regNum); break;
+                          case s8:
+                              cvt_z_s8_s32(startIdx, regNum);
+                              cvt_z_s32_f32(startIdx, regNum);
+                              break;
+                          case u8:
+                              cvt_z_u8_s32(startIdx, regNum);
+                              cvt_z_s32_f32(startIdx, regNum);
+                              break;
+                          default: assert(!"unreachable");
                       }
                   };
+        auto cvt2odt = [=](const int startIdx, const int regNum,
+                               data_type_t odt, data_type_t idt) {
+            switch (odt) {
+                case s32:
+                    if (idt == f32)
+                        cvt_z_f32_s32(startIdx, regNum);
+                    else if (idt == s8)
+                        cvt_z_s8_s32(startIdx, regNum);
+                    else if (idt == u8)
+                        cvt_z_u8_s32(startIdx, regNum);
+                    break;
+                case s8:
+                    if (idt == f32) cvt_z_f32_s32(startIdx, regNum);
+                    if (idt == f32 || idt == s32)
+                        cvt_z_s32_s8(startIdx, regNum);
+                    if (idt == u8) { cvt_z_u8_s8(startIdx, regNum); }
+                    break;
+                case u8:
+                    if (idt == f32) cvt_z_f32_s32(startIdx, regNum);
+                    if (idt == f32 || idt == s32)
+                        cvt_z_s32_u8(startIdx, regNum);
+                    if (idt == s8) cvt_z_s8_u8(startIdx, regNum);
+                    break;
+                default: assert(!"unreachable");
+            }
+        };
 
         auto load = [=](const Xmm &xmm, const Address &addr, int size) {
             switch (size) {
