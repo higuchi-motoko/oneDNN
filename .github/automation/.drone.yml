@@ -1,5 +1,6 @@
 # *******************************************************************************
 # Copyright 2020 Arm Limited and affiliates.
+# Copyright 2020 FUJITSU LIMITED
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -60,4 +61,31 @@ steps:
   commands:
   - apt-get update && apt-get install -y git build-essential cmake
   - .github/automation/build.sh --threading omp --mode Release --source-dir $(pwd) --build-dir $(pwd)/build
+  - .github/automation/test.sh --test-kind gtest --build-dir $(pwd)/build --report-dir $(pwd)/report
+---
+kind: pipeline
+name: Ubuntu18-JIT
+
+platform:
+  arch: amd64
+
+steps:
+- name: gcc-jit-test
+  image: ubuntu:18.04
+  commands:
+  - apt-get update && apt-get install -y -qq wget git cmake python3 build-essential libglib2.0-dev binutils-aarch64-linux-gnu cpp-5-aarch64-linux-gnu cpp-aarch64-linux-gnu g++-5-aarch64-linux-gnu g++-aarch64-linux-gnu gcc-5-aarch64-linux-gnu gcc-5-aarch64-linux-gnu-base:amd64 gcc-aarch64-linux-gnu libasan2-arm64-cross libatomic1-arm64-cross libc6-arm64-cross libc6-dev-arm64-cross libgcc-5-dev-arm64-cross libgcc1-arm64-cross libgomp1-arm64-cross libitm1-arm64-cross libstdc++-5-dev-arm64-cross libstdc++6-arm64-cross libubsan0-arm64-cross linux-libc-dev-arm64-cross pkg-config-aarch64-linux-gnu
+  - wget https://download.qemu.org/qemu-5.0.0.tar.xz
+  - tar xJf qemu-5.0.0.tar.xz > /dev/null
+  - cd qemu-5.0.0
+  - ./configure --target-list=aarch64-linux-user > /dev/null
+  - make > /dev/null
+  - make install > /dev/null
+  - cd ..
+  - export CC=/usr/bin/aarch64-linux-gnu-gcc
+  - export CXX=/usr/bin/aarch64-linux-gnu-g++
+  - .github/automation/build.sh --threading omp --mode Release --source-dir $(pwd) --build-dir $(pwd)/build --cmake-opt "-DDNNL_TARGET_ARCH=AARCH64 -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=AARCH64 -DCMAKE_FIND_ROOT_PATH=/usr/aarch64-linux-gnu -DQEMU_PATH=qemu-aarch64"  
+  - which qemu-aarch64
+  - qemu-aarch64 --version
+  - export QEMU_LD_PREFIX=/usr/aarch64-linux-gnu
+  - export QEMU_CPU="max,sve512=on"
   - .github/automation/test.sh --test-kind gtest --build-dir $(pwd)/build --report-dir $(pwd)/report
