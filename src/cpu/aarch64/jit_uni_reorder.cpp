@@ -44,14 +44,6 @@
 #endif
 #define DEBUG(...) DEBUg(__VA_ARGS__)
 
-#ifdef _WIN32
-/* seems like s_addr is a reserved macro on Windows */
-#undef s_addr
-constexpr static bool is_windows = true;
-#else
-constexpr static bool is_windows = false;
-#endif
-
 using namespace Xbyak_aarch64;
 using namespace dnnl::impl::types;
 
