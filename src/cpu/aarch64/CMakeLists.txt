@@ -1,5 +1,6 @@
 #*******************************************************************************
 # Copyright 2020 Arm Ltd. and affiliates
+# Copyright 2020 FUJITSU LIMITED
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,15 +15,22 @@
 # limitations under the License.
 #*******************************************************************************
 
-# This allows compiling other arm, non-ACL source files
-if (DNNL_AARCH64_USE_ACL)
-    file(GLOB_RECURSE SOURCES
+file(GLOB_RECURSE SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/cpu_*.[ch]pp
+    ${CMAKE_CURRENT_SOURCE_DIR}/jit_*.[ch]pp
+    )
+
+  # This allows compiling other arm, non-ACL source files
+if(NOT DNNL_AARCH64_USE_ACL)
+    list(REMOVE_ITEM SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/acl_*.[ch]
         ${CMAKE_CURRENT_SOURCE_DIR}/acl_*.[ch]pp
         )
-
-    set(OBJ_LIB ${LIB_NAME}_cpu_aarch64)
-    add_library(${OBJ_LIB} OBJECT ${SOURCES})
-    set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
-        $<TARGET_OBJECTS:${OBJ_LIB}>)
 endif()
+
+
+
+set(OBJ_LIB ${LIB_NAME}_cpu_aarch64)
+add_library(${OBJ_LIB} OBJECT ${SOURCES})
+set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
+    $<TARGET_OBJECTS:${OBJ_LIB}>)
