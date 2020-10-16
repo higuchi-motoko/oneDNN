@@ -1035,25 +1035,55 @@ private:
     int otype_sz;
     int stype_sz;
 
-    Reg64 reg_ptr_in = rsi;
-    Reg64 reg_ptr_out = rdx;
-    Reg64 reg_ptr_scale = abi_not_param1;
+    XReg reg_ptr_in = x6;
+    XReg reg_ptr_out = x2;
+    XReg reg_ptr_scale = abi_not_param1;
 
-    Reg64 reg_off_in = r8;
-    Reg64 reg_off_out = r9;
-    Reg64 reg_off_scale = r10;
+    XReg reg_off_in = x8;
+    XReg reg_off_out = x9;
+    XReg reg_off_scale = x10;
 
-    Reg64 reg_tmp = rax;
+    XReg reg_tmp = x0;
 
-    Xmm xmm_scale = xmm15;
-    Xmm xmm_zero = xmm14;
-    Xmm xmm_4x127b = xmm13; // TODO: unite with ymm_zero
-    Ymm ymm_zero = ymm14;
-    Ymm ymm_8x127b = ymm13;
-    Xmm xmm_tmp = xmm12;
-    Xmm xmm_saturation_ubound = xmm12;
-    Ymm ymm_saturation_ubound = ymm12;
-    Xmm xmm_saturate = xmm11;
+    VReg4S xmm_scale = v15.s;
+    VReg4S xmm_zero = v14.s;
+    VReg4S xmm_4x127b = v13.s; // TODO: unite with ymm_zero
+    ZRegS ymm_zero = z14.s;
+    ZRegS ymm_8x127b = z13.s;
+    VReg4S xmm_tmp = v12.s;
+    VReg4S xmm_saturation_ubound = v12.s;
+    ZRegS ymm_saturation_ubound = z12.s;
+
+    /* Note: x22 - x28 are already used as temporal registgers
+       in jit_generator.hpp.
+       x_ptr_(in|out|scale)_off keeps (base + offset) address. */
+    XReg x_ptr_in_off = x16;
+    XReg x_ptr_out_off = x18;
+    XReg x_ptr_scale_off = x20;
+
+    /* Caution: Chose predicate registers not used by x64's implementation. */
+    PReg p_lsb_256 = p7;
+    PReg p_512 = p6;
+    PReg p_tmp0 = p5;
+    PReg p_lsb_32 = p4;
+
+    const std::vector<uint32_t> tmp_vec_idx = {20, 21, 22, 23, 24, 25, 26, 27};
+    ZReg z_tmp0 = z20;
+    ZReg z_tmp1 = z21;
+    ZReg z_tmp2 = z22;
+    ZReg z_tmp3 = z23;
+    ZReg z_tmp4 = z24;
+    ZReg z_tmp5 = z25;
+    ZReg z_tmp6 = z26;
+    ZReg z_tmp7 = z27;
+
+    const std::vector<XReg> x_tmp_vec
+            = {X_TMP_0, X_TMP_1, X_TMP_2, X_TMP_3, X_TMP_4};
+    constexpr static int x_tmp_vec_size = 5;
+
+    const std::vector<ZReg> z_tmp_vec
+            = {z_tmp0, z_tmp1, z_tmp2, z_tmp3, z_tmp4, z_tmp5, z_tmp6, z_tmp7};
+    constexpr static int z_tmp_vec_size = 8;
 };
 
 status_t kernel_t::desc_init(
