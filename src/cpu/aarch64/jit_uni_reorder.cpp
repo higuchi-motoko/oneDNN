@@ -948,17 +948,31 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
 
     void loop_end(Label &l, XReg reg_cnt, int len, int i_step, int o_step,
             int s_step) {
-        add(reg_off_in, i_step * itype_sz);
-        add(reg_off_out, o_step * otype_sz);
-        if (prb_.scale_type == scale_type_t::MANY)
-            add(reg_off_scale, s_step * stype_sz);
-        dec(reg_cnt);
-        jnz(l);
+        add_imm(reg_off_in, reg_off_in, i_step * itype_sz, X_TMP_0);
+        add_imm(reg_off_out, reg_off_out, o_step * otype_sz, X_TMP_0);
+        add_imm(x_ptr_in_off, x_ptr_in_off, i_step * itype_sz, X_TMP_0);
+        add_imm(x_ptr_out_off, x_ptr_out_off, o_step * otype_sz, X_TMP_0);
 
-        sub(reg_off_in, len * i_step * itype_sz);
-        sub(reg_off_out, len * o_step * otype_sz);
-        if (prb_.scale_type == scale_type_t::MANY)
-            sub(reg_off_scale, len * s_step * stype_sz);
+        if (prb_.scale_type == scale_type_t::MANY) {
+            std::cout << "scale" << std::endl;
+            add_imm(reg_off_scale, reg_off_scale, s_step * stype_sz, X_TMP_0);
+            add_imm(x_ptr_scale_off, x_ptr_scale_off, s_step * stype_sz,
+                    X_TMP_0);
+        }
+        subs(reg_cnt, reg_cnt, 1);
+        b(NE, l);
+
+        sub_imm(reg_off_in, reg_off_in, len * i_step * itype_sz, X_TMP_0);
+        sub_imm(reg_off_out, reg_off_out, len * o_step * otype_sz, X_TMP_0);
+        sub_imm(x_ptr_in_off, x_ptr_in_off, len * i_step * itype_sz, X_TMP_0);
+        sub_imm(x_ptr_out_off, x_ptr_out_off, len * o_step * otype_sz, X_TMP_0);
+
+        if (prb_.scale_type == scale_type_t::MANY) {
+            sub_imm(reg_off_scale, reg_off_scale, len * s_step * stype_sz,
+                    X_TMP_0);
+            sub_imm(x_ptr_scale_off, x_ptr_scale_off, len * s_step * stype_sz,
+                    X_TMP_0);
+        }
     }
 
     bool simple_impl() {
@@ -970,10 +984,14 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         const int n_jit_loops = prb_.ndims - d.ndims_full_unroll;
         assert(n_jit_loops <= ndims_jit_loop_max);
 
-        xor_(reg_off_in, reg_off_in);
-        xor_(reg_off_out, reg_off_out);
-        if (prb_.scale_type == scale_type_t::MANY)
-            xor_(reg_off_scale, reg_off_scale);
+        eor(reg_off_in, reg_off_in, reg_off_in);
+        eor(reg_off_out, reg_off_out, reg_off_out);
+        mov(x_ptr_in_off, XReg(reg_ptr_in.getIdx()));
+        mov(x_ptr_out_off, XReg(reg_ptr_out.getIdx()));
+        if (prb_.scale_type == scale_type_t::MANY) {
+            eor(reg_off_scale, reg_off_scale, reg_off_scale);
+            mov(x_ptr_scale_off, XReg(reg_ptr_scale.getIdx()));
+        }
 
         Label l_loop[3];
         XReg reg_cnt[3] = {x15, x14, x13};
@@ -1148,11 +1166,18 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
                 shufps(xmm_scale, xmm_scale, 0x0);
             }
         } else if (prb_.scale_type == scale_type_t::MANY) {
-            mov(reg_ptr_scale, PARAM(scale));
+            add_imm(X_DEFAULT_ADDR, abi_param1, PARAM(scale), X_TMP_0);
+            ldr(reg_ptr_scale, ptr(X_DEFAULT_ADDR));
         }
-        mov(reg_ptr_in, PARAM(in));
-        mov(reg_ptr_out, PARAM(out));
+        add_imm(X_TMP_0, abi_param1, PARAM(in), X_TMP_2);
+        add_imm(X_TMP_1, abi_param1, PARAM(out), X_TMP_2);
+        ldr(reg_ptr_in, ptr(X_TMP_0));
+        ldr(reg_ptr_out, ptr(X_TMP_1));
 #undef PARAM
+
+        mov(x_ptr_in_off, XReg(reg_ptr_in.getIdx()));
+        mov(x_ptr_out_off, XReg(reg_ptr_out.getIdx()));
+        mov(x_ptr_scale_off, XReg(reg_ptr_scale.getIdx()));
 
         if (can_do_tr8x8()) {
             vxorps(ymm_zero, ymm_zero, ymm_zero);
