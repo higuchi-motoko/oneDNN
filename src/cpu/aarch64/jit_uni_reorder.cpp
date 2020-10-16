@@ -282,26 +282,54 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
 
         if (interim_f32) cvt2ps(0, unroll, prb_.itype);
 
-        for (int i = 0; i < unroll / 2; i++) {
-            vunpcklps(Ymm(unroll + i), Ymm(2 * i), Ymm(2 * i + 1));
-            vunpckhps(Ymm(i), Ymm(2 * i), Ymm(2 * i + 1));
+#if 0
+	/* Deubg code */
+	index(z0.s, 0, 1);
+	mov(z0.s, P_MSB_256/T_m, 0);
+	mov(z_tmp_vec[0].s, 16);
+	for(uint32_t i=1; i<8; i++) {
+	  add(ZRegS{i}, ZRegS{i-1}, z_tmp_vec[0].s);
+	  mov(ZRegS{i}, P_MSB_256/T_m, 0);
+	}
+#endif
+
+        ptrue(p_tmp0.s, VL4);
+        /* 1st turn */
+        for (uint32_t i = 0; i < unroll / 2; i++) {
+            trn1(z_tmp_vec[i].s, ZRegS {2 * i}, ZRegS {2 * i + 1});
+            trn2(z_tmp_vec[unroll / 2 + i].s, ZRegS {2 * i}, ZRegS {2 * i + 1});
         }
 
-        const unsigned int lfloat = 0x44;
-        const unsigned int ufloat = 0xee;
-        for (int i = 0; i < unroll / 2; i++) {
-            int j = i % 2 == 0 ? unroll + i : i - 1;
-            vshufps(Ymm(unroll / 2 + 2 * i), Ymm(j), Ymm(j + 1), lfloat);
-            vshufps(Ymm(unroll / 2 + 2 * i + 1), Ymm(j), Ymm(j + 1), ufloat);
+        /* 2nd turn */
+        trn1(z4.d, z_tmp_vec[0].d, z_tmp_vec[1].d);
+        trn1(z5.d, z_tmp_vec[4].d, z_tmp_vec[5].d);
+        trn2(z6.d, z_tmp_vec[0].d, z_tmp_vec[1].d);
+        trn2(z7.d, z_tmp_vec[4].d, z_tmp_vec[5].d);
+        trn1(z_tmp_vec[0].d, z_tmp_vec[2].d, z_tmp_vec[3].d);
+        trn1(z_tmp_vec[1].d, z_tmp_vec[6].d, z_tmp_vec[7].d);
+        trn2(z_tmp_vec[2].d, z_tmp_vec[2].d, z_tmp_vec[3].d);
+        trn2(z_tmp_vec[3].d, z_tmp_vec[6].d, z_tmp_vec[7].d);
+
+        /* 3rd turn */
+        for (uint32_t i = 0; i < unroll / 2; i++) {
+            mov(ZRegD {i}, ZRegD {unroll / 2 + i});
+            mov(z_tmp_vec[unroll / 2 + i].d, z_tmp_vec[i].d);
         }
 
-        const unsigned int lquad = 0x20;
-        for (int i = 0; i < unroll / 2; i++)
-            vperm2f128(Ymm(i), Ymm(unroll / 2 + i), Ymm(unroll + i), lquad);
+        /* 4th turn */
+        for (uint32_t i = 0; i < unroll / 2; i++) {
+            ZRegB z {unroll / 2 + i};
+            ext(z, z, 16);
+            ext(z_tmp_vec[unroll / 2 + i].b, z_tmp_vec[unroll / 2 + i].b, 48);
+        }
 
-        const unsigned int uquad = 0x31;
-        for (int i = unroll / 2; i < unroll; i++)
-            vperm2f128(Ymm(i), Ymm(i), Ymm(unroll / 2 + i), uquad);
+        /* 5th turn */
+        for (uint32_t i = 0; i < unroll / 2; i++) {
+            ZRegS z0 {i};
+            ZRegS z1 {unroll / 2 + i};
+            sel(z0, p_tmp0.s, z0, z_tmp_vec[unroll / 2 + i].s);
+            sel(z1, p_tmp0, z1, z_tmp_vec[i].s);
+        }
 
         if (need_saturation) {
             init_saturate_f32(ymm_zero, ymm_saturation_ubound, reg_tmp,
