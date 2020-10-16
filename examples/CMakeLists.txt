@@ -60,7 +60,7 @@ foreach(src ${sources})
         register_exe(${example_name} ${src} "" ${LIBM})
 
         # Adding test for CPU
-        add_test("cpu-${example_name}" "${example_name}" cpu)
+        add_test("cpu-${example_name}" ${QEMU_PATH} "${example_name}" cpu)
         maybe_configure_windows_test("cpu-${example_name}" TEST)
 
         # Adding test for GPU

@@ -115,7 +115,7 @@ function(register_example name srcs test)
     find_package(dnnl @PROJECT_VERSION@ CONFIG REQUIRED HINTS ${DNNLROOT})
     target_link_libraries(${name} DNNL::dnnl ${LIBM})
     if("x${test}" STREQUAL "xtest")
-        add_test(${name} ${name})
+        add_test(${name} ${QEMU_PATH} ${name})
         maybe_configure_test("${example_name}" TEST)
     endif()
 endfunction()
@@ -147,7 +147,7 @@ foreach(src ${sources})
         register_example(${example_name} ${src} "" ${LIBM})
 
         # Adding test for CPU
-        add_test("cpu-${example_name}" "${example_name}" cpu)
+        add_test("cpu-${example_name}" ${QEMU_PATH} "${example_name}" cpu)
         maybe_configure_test("cpu-${example_name}" TEST)
 
         # Adding test for GPU
