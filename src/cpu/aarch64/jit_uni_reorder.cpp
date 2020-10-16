@@ -153,10 +153,6 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         return (int)prb_.nodes[d].ss;
     }
 
-    Address i_addr(int i_off) {
-        return ptr[reg_ptr_in + reg_off_in + i_off * itype_sz];
-    }
-
     Address o_addr(int o_off) {
         return ptr[reg_ptr_out + reg_off_out + o_off * otype_sz];
     }
@@ -282,13 +278,37 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         const bool need_saturation
                 = (utils::one_of(prb_.otype, u8, s8, s32) && interim_f32);
 
-        for (int i = 0; i < unroll; i++) {
-            using namespace data_type;
+        add_imm(X_TMP_0, XReg(x_ptr_in_off), i_off * itype_sz, X_DEFAULT_ADDR);
+        add_imm(X_TMP_1, X_TMP_0, is(0) * itype_sz, X_DEFAULT_ADDR);
+        add_imm(X_TMP_2, X_TMP_1, is(0) * itype_sz, X_DEFAULT_ADDR);
+        add_imm(X_TMP_3, X_TMP_2, is(0) * itype_sz, X_DEFAULT_ADDR);
 
-            load(Ymm(i), i_addr(i_off + i * is(0)), unroll * itype_sz);
+        if (unroll * itype_sz == 32)
+            for (uint32_t i = 0; i < 4; i++)
+                ld1w(ZRegS {i}, p_lsb_256 / T_z, ptr(x_tmp_vec[i]));
+        else if (unroll * itype_sz == 16)
+            for (uint32_t i = 0; i < 4; i++)
+                ldr(QReg {i}, ptr(x_tmp_vec[i]));
+        else if (unroll * itype_sz == 8)
+            for (uint32_t i = 0; i < 4; i++)
+                ldr(DReg {i}, ptr(x_tmp_vec[i]));
 
-            if (interim_f32) cvt2ps(Ymm(i), Ymm(i), prb_.itype);
-        }
+        add_imm(X_TMP_0, X_TMP_3, is(0) * itype_sz, X_DEFAULT_ADDR);
+        add_imm(X_TMP_1, X_TMP_0, is(0) * itype_sz, X_DEFAULT_ADDR);
+        add_imm(X_TMP_2, X_TMP_1, is(0) * itype_sz, X_DEFAULT_ADDR);
+        add_imm(X_TMP_3, X_TMP_2, is(0) * itype_sz, X_DEFAULT_ADDR);
+
+        if (unroll * itype_sz == 32)
+            for (uint32_t i = 0; i < 4; i++)
+                ld1w(ZRegS {4 + i}, p_lsb_256 / T_z, ptr(x_tmp_vec[i]));
+        else if (unroll * itype_sz == 16)
+            for (uint32_t i = 0; i < 4; i++)
+                ldr(QReg {4 + i}, ptr(x_tmp_vec[i]));
+        else if (unroll * itype_sz == 8)
+            for (uint32_t i = 0; i < 4; i++)
+                ldr(DReg {4 + i}, ptr(x_tmp_vec[i]));
+
+        if (interim_f32) cvt2ps(0, unroll, prb_.itype);
 
         for (int i = 0; i < unroll / 2; i++) {
             vunpcklps(Ymm(unroll + i), Ymm(2 * i), Ymm(2 * i + 1));
@@ -367,26 +387,89 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         if (!can_do) return false;
 
         for (int off = 0; off < len;) {
-            // TODO: we need extra reg for proper saturation if otype == s32
             const int unroll
                     = nstl::min(16 - (prb_.otype == s32), (len - off) / simd_w);
 
-            for (int ur = 0; ur < unroll; ++ur)
-                uni_vmovups(Vmm(ur), i_addr(off + ur * simd_w));
+            int ur = 0;
+            int tmp_ur = 0;
+            while (ur < unroll) {
+                int count = 0;
+                const int vlen = cpu_isa_traits<isa>::vlen;
+
+                do {
+                    add_imm(x_tmp_vec[count++], x_ptr_in_off,
+                            (off + ur * simd_w) * itype_sz, X_DEFAULT_ADDR);
+                    ur++;
+                } while (ur < unroll && count < x_tmp_vec_size);
+
+                for (int i = 0; i < count; i++) {
+                    /*                    if (vlen == 64)
+                        ldr(ZReg(tmp_ur + i), ptr(x_tmp_vec[i]));
+			else */
+                    if (vlen == 64 || vlen == 32)
+                        ld1w(ZRegS(tmp_ur + i), p_lsb_256 / T_z,
+                                ptr(x_tmp_vec[i]));
+                    else if (vlen == 16)
+                        ldr(QReg(tmp_ur + i), ptr(x_tmp_vec[i]));
+                    else
+                        assert(!"unreachable");
+                }
+                tmp_ur += count;
+            }
 
             if (prb_.itype != prb_.otype) {
+                const int vlen = cpu_isa_traits<isa>::vlen;
                 for (int ur = 0; ur < unroll; ++ur) {
-                    if (prb_.itype == s32 && prb_.otype == f32)
-                        uni_vcvtdq2ps(Vmm(ur), Vmm(ur));
-                    else if (prb_.itype == f32 && prb_.otype == s32)
-                        uni_vcvtps2dq(Vmm(ur), Vmm(ur));
-                    else
+                    if (prb_.itype == s32 && prb_.otype == f32) {
+                        if (vlen == 64 || vlen == 32) {
+                            ZRegS r(ur);
+                            /* MSB side 256 bits are ignored. */
+                            scvtf(r, p_512 / T_m, r);
+                        } else if (vlen == 16) {
+                            VReg4S r(ur);
+                            scvtf(r, r);
+                        } else
+                            assert(!"unreachable");
+                    } else if (prb_.itype == f32 && prb_.otype == s32) {
+                        /* Out of order can be expected. */
+                        if (vlen == 64 || vlen == 32) {
+                            ZRegS r(ur);
+                            frinti(r, p_512 / T_m, r);
+                            fcvtzs(r, p_512 / T_m, r);
+                        } else if (vlen == 16) {
+                            VReg4S r(ur);
+                            frinti(r, r);
+                            fcvtzs(r, r);
+                        } else
+                            assert(!"unreachable");
+                    } else
                         assert(!"unreachable");
                 }
             }
 
-            for (int ur = 0; ur < unroll; ++ur)
-                uni_vmovups(o_addr(off + ur * simd_w), Vmm(ur));
+            ur = 0;
+            tmp_ur = 0;
+            while (ur < unroll) {
+                int count = 0;
+                const int vlen = cpu_isa_traits<isa>::vlen;
+
+                do {
+                    add_imm(x_tmp_vec[count++], x_ptr_out_off,
+                            (off + ur * simd_w) * otype_sz, X_DEFAULT_ADDR);
+                    ur++;
+                } while (ur < unroll && count < x_tmp_vec_size);
+
+                for (int i = 0; i < count; i++) {
+                    if (vlen == 64 || vlen == 32)
+                        st1w(ZRegS(tmp_ur + i), p_lsb_256 / T_z,
+                                ptr(x_tmp_vec[i]));
+                    else if (vlen == 16)
+                        str(QReg(tmp_ur + i), ptr(x_tmp_vec[i]));
+                    else
+                        assert(!"unreachable");
+                }
+                tmp_ur += count;
+            }
 
             off += unroll * simd_w;
         }
@@ -489,18 +572,48 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
             assert(ur_step == xmm_vlen);
             /* load with stride */
             for (int ur = 0; ur < reg_unroll; ur += ur_step) {
+
+                /* x_tmp_vec = X_TMP_0 - X_TMP_4 
+		 Do not use X_TMP_? as the last arg. */
+                for (int r = 0; r < ur_step; ++r) {
+                    add_imm(x_tmp_vec[r], x_ptr_in_off,
+                            i_off[ur + r] * itype_sz, X_DEFAULT_ADDR);
+                }
+
                 for (int r = 0; r < ur_step; ++r) {
                     if (itype_sz == 4)
-                        pinsrd(Xmm(ur), i_addr(i_off[ur + r]), r);
+                        ld1(VReg4S(ur)[r], ptr(x_tmp_vec[r]));
                     else if (itype_sz == 2)
-                        pinsrw(Xmm(ur), i_addr(i_off[ur + r]), r);
+                        ld1(VReg8H(ur)[r], ptr(x_tmp_vec[r]));
                     else
-                        pinsrb(Xmm(ur), i_addr(i_off[ur + r]), r);
+                        ld1(VReg16B(ur)[r], ptr(x_tmp_vec[r]));
                 }
             }
         } else {
-            for (int ur = 0; ur < reg_unroll; ur += load_step)
-                load(Xmm(ur), i_addr(i_off[ur]), load_step * itype_sz);
+            int ur = 0;
+            int tmp_ur = 0;
+            while (ur < reg_unroll) {
+                int count = 0;
+
+                do {
+                    add_imm(x_tmp_vec[count++], x_ptr_in_off,
+                            i_off[ur] * itype_sz, X_DEFAULT_ADDR);
+                    ur += load_step;
+                } while (ur < reg_unroll && count < x_tmp_vec_size);
+
+                for (int i = 0; i < count; i++) {
+
+                    switch (load_step * itype_sz) {
+                        case 16: ldr(QReg(tmp_ur), ptr(x_tmp_vec[i])); break;
+                        case 8: ldr(DReg(tmp_ur), ptr(x_tmp_vec[i])); break;
+                        case 4: ldr(SReg(tmp_ur), ptr(x_tmp_vec[i])); break;
+                        case 2: ldr(HReg(tmp_ur), ptr(x_tmp_vec[i])); break;
+                        case 1: ldr(BReg(tmp_ur), ptr(x_tmp_vec[i])); break;
+                        default: assert(!"unreachable");
+                    }
+                    tmp_ur += load_step;
+                }
+            }
         }
 
         /* xmm[:] <-- (f32)xmm[:] */
