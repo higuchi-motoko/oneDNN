@@ -335,8 +335,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
             init_saturate_f32(ymm_zero, ymm_saturation_ubound, reg_tmp,
                     interim_f32 ? f32 : prb_.itype, prb_.otype);
             for (int i = 0; i < unroll; i++)
-                saturate_f32(
-                        Ymm(i), ymm_zero, ymm_saturation_ubound, prb_.otype);
+                saturate_f32(ZRegS(i), ymm_zero, ymm_saturation_ubound,
+                        prb_.otype, p_512);
         }
 
         if (prb_.otype != f32)
@@ -376,7 +376,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
     bool can_do_tr8x8() {
         using namespace data_type;
 
-        return mayiuse(avx2) && prb_.ndims >= 2
+        return mayiuse(sve_512) && prb_.ndims >= 2
                 && ((utils::one_of(prb_.itype, u8, s8, s32, f32)
                         && utils::one_of(prb_.otype, u8, s8, s32, f32)))
                 && utils::everyone_is(8, n(0), n(1))
@@ -401,8 +401,10 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
     bool process_direct_copy(int len) {
         using namespace data_type;
 
-        using Vmm = typename cpu_isa_traits<isa>::Vmm;
-        const int simd_w = cpu_isa_traits<isa>::vlen / itype_sz;
+        const int simd_w = cpu_isa_traits<isa>::vlen == 16
+                ? cpu_isa_traits<isa>::vlen / itype_sz /* use 128-bit VReg */
+                : cpu_isa_traits<isa>::vlen / itype_sz
+                        / 2; /* use lower half of 512-bit ZReg */
 
         bool can_do = true && mayiuse(isa)
                 && utils::everyone_is(1, os(0), is(0))
@@ -554,14 +556,13 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         };
 
         /* check whether loading 4 values at once is possible */
-        static constexpr int xmm_vlen = 4;
-        bool can_load_xmm = reg_unroll % xmm_vlen == 0;
+        bool can_load_xmm = mayiuse(sve_512) && reg_unroll % 4 == 0;
         for (int ur = 1; ur < reg_unroll; ++ur)
             if (i_off[ur] != i_off[ur - 1] + 1) can_load_xmm = false;
-        const int load_step = can_load_xmm ? xmm_vlen : 1;
+        const int load_step = can_load_xmm ? 4 : 1;
 
         /* check whether storing 4 values at once is possible */
-        bool can_store_xmm = reg_unroll % xmm_vlen == 0;
+        bool can_store_xmm = reg_unroll % 4 == 0;
         for (int ur = 1; ur < reg_unroll; ++ur)
             if (o_off[ur] != o_off[ur - 1] + 1) can_store_xmm = false;
         const int ur_step = can_store_xmm ? 4 : 1;
@@ -574,7 +575,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
                 = (utils::one_of(prb_.otype, u8, s8, s32) && interim_f32);
 
         if (!can_load_xmm && can_store_xmm) {
-            assert(ur_step == xmm_vlen);
+            assert(ur_step == 4);
             /* load with stride */
             for (int ur = 0; ur < reg_unroll; ur += ur_step) {
 
@@ -625,7 +626,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         if (interim_f32) {
             const int cvt_step = nstl::max(load_step, ur_step);
             for (int ur = 0; ur < reg_unroll; ur += cvt_step)
-                cvt2ps(Xmm(ur), Xmm(ur), prb_.itype);
+                cvt2ps(ur, 1, prb_.itype);
         }
 
         if (can_load_xmm && !can_store_xmm) {
@@ -671,24 +672,16 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
             if (itype_sz == 4 || interim_f32) {
                 for (int ur = 0; ur < reg_unroll; ur += load_step)
                     for (int r = 1; r < load_step; ++r) {
-                        if (mayiuse(avx))
-                            vshufps(Xmm(ur + r), Xmm(ur), Xmm(ur), r);
-                        else {
-                            movups(Xmm(ur + r), Xmm(ur));
-                            shufps(Xmm(ur + r), Xmm(ur), r);
-                        }
+                        VReg4S v(ur);
+                        VReg4S v_r(ur + r);
+                        dup(VReg16B(ur + r), VReg16B(ur)[0]);
+                        ins_(VReg4S(ur + r)[0], VReg4S(ur)[r]);
                     }
             } else {
                 for (int ur = 0; ur < reg_unroll; ur += load_step)
-                    for (int r = 1; r < load_step; ++r) {
-                        if (mayiuse(avx))
-                            vpalignr(Xmm(ur + r), Xmm(ur), Xmm(ur),
-                                    itype_sz * r);
-                        else {
-                            movups(Xmm(ur + r), Xmm(ur));
-                            palignr(Xmm(ur + r), Xmm(ur), itype_sz * r);
-                        }
-                    }
+                    for (int r = 1; r < load_step; ++r)
+                        ext(VReg16B(ur + r), VReg16B(ur), VReg16B(ur),
+                                itype_sz * r);
             }
         }
 
@@ -697,7 +690,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
             /* xmm <-- scale * xmm[:] */
             if (prb_.scale_type == scale_type_t::COMMON) {
                 for (int ur = 0; ur < reg_unroll; ur += ur_step)
-                    mulps(Xmm(ur), xmm_scale);
+                    fmul(VReg4S(ur), VReg4S(ur), xmm_scale);
             } else if (prb_.scale_type == scale_type_t::MANY) {
                 enum class scale_load_type_t { bcast, load, gather };
 
@@ -799,7 +792,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
             /* xmm[0] <-- scale * xmm[0] */
             if (prb_.scale_type == scale_type_t::COMMON) {
                 for (int ur = 0; ur < reg_unroll; ur += ur_step)
-                    mulss(Xmm(ur), xmm_scale);
+                    fmul(ZRegS(ur), p_lsb_32 / T_m, ZRegS(xmm_scale.getIdx()));
             } else if (prb_.scale_type == scale_type_t::MANY) {
                 int ur = 0;
                 int tmp_ur = 0;
@@ -878,8 +871,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
             init_saturate_f32(
                     xmm_zero, xmm_saturation_ubound, reg_tmp, f32, prb_.otype);
             for (int ur = 0; ur < reg_unroll; ur += ur_step) {
-                saturate_f32(Xmm(ur), xmm_zero, xmm_saturation_ubound,
-                        xmm_saturate, prb_.otype);
+                saturate_f32(VReg4S(ur), xmm_zero, xmm_saturation_ubound,
+                        prb_.otype, p_512);
             }
         }
 
@@ -1004,8 +997,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
             loop_begin(l_loop[0], reg_cnt[0], n(nfu + 0) / ldu);
 
         bool optimized = false;
-        optimized = optimized || process_direct_copy<avx>(d.len_unroll);
-        optimized = optimized || process_direct_copy<sse41>(d.len_unroll);
+        optimized = optimized || process_direct_copy<sve_512>(d.len_unroll);
+        optimized = optimized || process_direct_copy<simdfp>(d.len_unroll);
         optimized = optimized || process_unroll_tr8x8(d.len_unroll);
         if (!optimized) process_unroll_generic(d.len_unroll);
 
@@ -1155,16 +1148,13 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
 
     void generate() override {
         preamble();
-#define PARAM(x) ptr[abi_param1 + offsetof(call_param_t, x)]
+#define PARAM(x) offsetof(call_param_t, x)
         if (prb_.scale_type == scale_type_t::COMMON) {
             auto reg_ptr_scale_tmp = reg_ptr_in;
-            mov(reg_ptr_scale_tmp, PARAM(scale));
-            if (mayiuse(avx))
-                vbroadcastss(xmm_scale, ptr[reg_ptr_scale_tmp]);
-            else {
-                movss(xmm_scale, ptr[reg_ptr_scale_tmp]);
-                shufps(xmm_scale, xmm_scale, 0x0);
-            }
+            add_imm(X_TMP_0, abi_param1, PARAM(scale), X_TMP_1);
+            ldr(reg_ptr_scale_tmp, ptr(X_TMP_0));
+            ldr(W_TMP_0, ptr(reg_ptr_scale_tmp));
+            dup(xmm_scale, W_TMP_0);
         } else if (prb_.scale_type == scale_type_t::MANY) {
             add_imm(X_DEFAULT_ADDR, abi_param1, PARAM(scale), X_TMP_0);
             ldr(reg_ptr_scale, ptr(X_DEFAULT_ADDR));
@@ -1178,23 +1168,23 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
         mov(x_ptr_in_off, XReg(reg_ptr_in.getIdx()));
         mov(x_ptr_out_off, XReg(reg_ptr_out.getIdx()));
         mov(x_ptr_scale_off, XReg(reg_ptr_scale.getIdx()));
+        ptrue(p_lsb_256.b, VL32);
+        ptrue(p_lsb_32.b, VL4);
+        ptrue(p_512.b);
 
         if (can_do_tr8x8()) {
-            vxorps(ymm_zero, ymm_zero, ymm_zero);
+            dup(ymm_zero, 0);
 
             if (prb_.itype == data_type::u8 && prb_.otype == data_type::s8) {
-                mov(reg_tmp, 0x7f7f7f7f7f7f7f7f);
-                movq(Xmm(ymm_8x127b.getIdx()), reg_tmp);
+                mov_imm(reg_tmp, 0x7f7f7f7f7f7f7f7f);
+                mov(VReg4S(ymm_8x127b.getIdx())[0], WReg(reg_tmp.getIdx()));
             }
-        } else {
-            if (mayiuse(avx))
-                vxorps(xmm_zero, xmm_zero, xmm_zero);
-            else
-                xorps(xmm_zero, xmm_zero);
+        } else if (mayiuse(sve_512)) {
+            movi(xmm_zero, 0);
 
             if (prb_.itype == data_type::u8 && prb_.otype == data_type::s8) {
-                mov(reg_tmp.cvt32(), 0x7f7f7f7f);
-                movd(xmm_4x127b, reg_tmp.cvt32());
+                mov(WReg(reg_tmp.getIdx()), 0x7f7f7f7f);
+                mov(xmm_4x127b[0], WReg(reg_tmp.getIdx()));
             }
         }
 
@@ -1294,7 +1284,6 @@ kernel_t *kernel_t::create(const kernel_t::desc_t &desc) {
 
     return nullptr;
 }
-
 } // namespace tr
 
 static void prb_block_for_cache(tr::prb_t &prb) {
