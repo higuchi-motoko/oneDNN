@@ -998,7 +998,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
 
         bool optimized = false;
         optimized = optimized || process_direct_copy<sve_512>(d.len_unroll);
-        optimized = optimized || process_direct_copy<simdfp>(d.len_unroll);
+        optimized = optimized || process_direct_copy<asimd>(d.len_unroll);
         optimized = optimized || process_unroll_tr8x8(d.len_unroll);
         if (!optimized) process_unroll_generic(d.len_unroll);
 

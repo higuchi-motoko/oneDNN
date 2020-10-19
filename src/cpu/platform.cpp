@@ -117,7 +117,7 @@ int get_vector_register_size() {
     if (mayiuse(sse41)) return cpu_isa_traits<sse41>::vlen;
 #elif DNNL_AARCH64
     using namespace aarch64;
-    if (mayiuse(simdfp)) return cpu_isa_traits<simdfp>::vlen;
+    if (mayiuse(asimd)) return cpu_isa_traits<asimd>::vlen;
     if (mayiuse(sve_512)) return cpu_isa_traits<sve_512>::vlen;
 #endif
     return 0;

@@ -206,7 +206,7 @@ public:
         if (odt == u8) {
             if (mayiuse(sve_512))
                 dup(Xbyak_aarch64::ZRegS(vmm_lbound.getIdx()), 0);
-            else if (mayiuse(simdfp))
+            else if (mayiuse(asimd))
                 movi(Xbyak_aarch64::VReg4S(vmm_lbound.getIdx()), 0);
             else
                 assert(!"unreachable");
@@ -243,14 +243,14 @@ public:
         if (odt == u8) {
             if (mayiuse(sve_512))
                 fmax(z_tmp, p_true / Xbyak_aarch64::T_m, z_lbound);
-            else if (mayiuse(simdfp))
+            else if (mayiuse(asimd))
                 fmax(v_tmp, v_tmp, v_lbound);
             else
                 assert(!"unreachable");
         }
         if (mayiuse(sve_512))
             fmin(z_tmp, p_true / Xbyak_aarch64::T_m, z_ubound);
-        else if (mayiuse(simdfp))
+        else if (mayiuse(asimd))
             fmin(v_tmp, v_tmp, v_ubound);
         else
             assert(!"unreachable");

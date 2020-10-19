@@ -2448,8 +2448,8 @@ typedef enum {
     /// (initial support)
     dnnl_cpu_isa_avx512_core_amx = 0x3e7,
 
-    /// AARCH64 SIMD (128-bit instructions)
-    dnnl_cpu_isa_simdfp = 0x1000000,
+    /// AARCH64 Advanced SIMD & floating-point
+    dnnl_cpu_isa_asimd = 0x1000000,
 
     /// AARCH64 SVE 128 bits
     dnnl_cpu_isa_sve_128 = 0x8000000,

@@ -38,7 +38,7 @@ namespace cpu {
 namespace aarch64 {
 
 enum cpu_isa_bit_t : unsigned {
-    simdfp_bit = 1u << 0,
+    asimd_bit = 1u << 0,
     sve_128_bit = 1u << 1,
     sve_256_bit = 1u << 2,
     sve_384_bit = 1u << 3,
@@ -47,11 +47,11 @@ enum cpu_isa_bit_t : unsigned {
 
 enum cpu_isa_t : unsigned {
     isa_any = 0u,
-    simdfp = simdfp_bit,
-    sve_128 = sve_128_bit | simdfp,
-    sve_256 = sve_256_bit | simdfp,
-    sve_384 = sve_384_bit | simdfp,
-    sve_512 = sve_512_bit | simdfp,
+    asimd = asimd_bit,
+    sve_128 = sve_128_bit | asimd,
+    sve_256 = sve_256_bit | asimd,
+    sve_384 = sve_384_bit | asimd,
+    sve_512 = sve_512_bit | asimd,
     isa_all = ~0u,
 };
 
@@ -82,13 +82,14 @@ struct cpu_isa_traits<isa_all> {
 };
 
 template <>
-struct cpu_isa_traits<simdfp> {
+struct cpu_isa_traits<asimd> {
     typedef Xbyak_aarch64::VReg4S Vmm;
     static constexpr int vlen_shift = 4;
     static constexpr int vlen = 16;
     static constexpr int n_vregs = 32;
-    static constexpr dnnl_cpu_isa_t user_option_val = dnnl_cpu_isa_simdfp;
-    static constexpr const char *user_option_env = "SIMD&FP";
+    static constexpr dnnl_cpu_isa_t user_option_val = dnnl_cpu_isa_asimd;
+    static constexpr const char *user_option_env
+            = "Advanced SIMD & floating-point";
 };
 
 template <>
@@ -115,7 +116,7 @@ static inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
     if ((cpu_isa_mask & cpu_isa) != cpu_isa) return false;
 
     switch (cpu_isa) {
-        case simdfp: return cpu().has(Cpu::tADVSIMD) && cpu().has(Cpu::tFP);
+        case asimd: return cpu().has(Cpu::tADVSIMD) && cpu().has(Cpu::tFP);
         case sve_128:
             return cpu().has(Cpu::tADVSIMD) && cpu().has(Cpu::tFP)
                     && cpu().has(Cpu::tSVE) && cpu().getSveLen() == SVE_128;
@@ -145,7 +146,7 @@ inline bool isa_has_bf16(cpu_isa_t isa) {
 /* clang-format off */
 #define JIT_IMPL_NAME_HELPER(prefix, isa, suffix_if_any) \
     ((isa) == isa_any ? prefix STRINGIFY(any) : \
-    ((isa) == simdfp ? prefix STRINGIFY(simdfp) : \
+    ((isa) == asimd ? prefix STRINGIFY(asimd) : \
     ((isa) == sve_512 ? prefix STRINGIFY(sve_512) : \
     prefix suffix_if_any))))
 /* clang-format on */

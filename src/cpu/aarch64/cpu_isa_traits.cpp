@@ -99,7 +99,7 @@ bool init_max_cpu_isa() {
 #define ELSEIF_HANDLE_CASE(cpu_isa) else IF_HANDLE_CASE(cpu_isa)
 
         IF_HANDLE_CASE(isa_all);
-        ELSEIF_HANDLE_CASE(simdfp);
+        ELSEIF_HANDLE_CASE(asimd);
         ELSEIF_HANDLE_CASE(sve_512);
 
 #undef IF_HANDLE_CASE
@@ -120,7 +120,7 @@ struct isa_info_t {
     dnnl_cpu_isa_t convert_to_public_enum(void) const {
         switch (isa) {
             case sve_512: return dnnl_cpu_isa_sve_512;
-            case simdfp: return dnnl_cpu_isa_simdfp;
+            case asimd: return dnnl_cpu_isa_asimd;
             default: return dnnl_cpu_isa_all;
         }
     }
@@ -128,7 +128,7 @@ struct isa_info_t {
     const char *get_name() const {
         switch (isa) {
             case sve_512: return "AArch64 SVE (512 bits)";
-            case simdfp: return "AArch64 SIMD&FP";
+            case asimd: return "AArch64 (with Advadnced SIMD & floating-point)";
             default: return "AArch64";
         }
     }
@@ -141,7 +141,7 @@ static isa_info_t get_isa_info_t(void) {
 #define HANDLE_CASE(cpu_isa) \
     if (mayiuse(cpu_isa)) return isa_info_t(cpu_isa);
     HANDLE_CASE(sve_512);
-    HANDLE_CASE(simdfp);
+    HANDLE_CASE(asimd);
 #undef HANDLE_CASE
     return isa_info_t(isa_any);
 }
@@ -171,7 +171,7 @@ status_t set_max_cpu_isa(dnnl_cpu_isa_t isa) {
     case cpu_isa_traits<cpu_isa>::user_option_val: isa_to_set = cpu_isa; break;
     switch (isa) {
         HANDLE_CASE(isa_all);
-        HANDLE_CASE(simdfp);
+        HANDLE_CASE(asimd);
         HANDLE_CASE(sve_512);
         default: return invalid_arguments;
     }
