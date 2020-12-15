@@ -137,7 +137,6 @@ struct jit_softmax_base_t : public jit_generator {
     }
 
     void load_common_params() {
-        printf("load_common_params\n");
         mov(WReg(IDX(reg_tmp)), float2int(1.0f));
         dup(ZRegS(IDX(vone)), WReg(IDX(reg_tmp)));
         mov(reg_tmp, float2int(-FLT_MAX));
@@ -240,7 +239,6 @@ struct jit_softmax_base_t : public jit_generator {
     enum class op_t : unsigned { max, sum };
 
     void perform_op(ZReg v, ZReg vtmp, op_t op) {
-        printf("perform_op\n");
         if (op == op_t::max)
             uni_fmax(v, v, vtmp, P_ALL_ONE);
         else if (op == op_t::sum)
@@ -249,7 +247,6 @@ struct jit_softmax_base_t : public jit_generator {
 
     template <typename body_t>
     void axis_loop(body_t body) {
-        printf("axis_loop\n");
         Label main_loop, tail_loop, tail_axis;
 
         // reverse_spat_offt to dispatch between labels
@@ -274,13 +271,16 @@ struct jit_softmax_base_t : public jit_generator {
         {
             if (loop_tail_) {
                 body(loop_tail_, false);
-                add(reg_spat_offt, reg_spat_offt, loop_tail_ * axis_stride_);
+                if (axis_stride_ <= vlen) add(reg_spat_offt, reg_spat_offt, loop_tail_ * axis_stride_);
+                else mov(reg_spat_offt, loop_tail_ * axis_stride_);
             }
         }
 
         L(tail_axis);
         {
-            if (axis_simd_tail_) { body(1, true); }
+            if (axis_simd_tail_) {
+                body(1, true);
+            }
         }
     }
 
@@ -309,7 +309,6 @@ struct jit_softmax_base_t : public jit_generator {
     // that are participated are not defined at the moment of base ctor
     // initialization.
     void generate() override {
-        printf("generate\n");
         if (pd_->is_fwd() || is_logsoftmax_)
             exp_injector_.reset(new jit_uni_eltwise_injector_f32<isa>(this,
                     alg_kind::eltwise_exp, 0.0f, 0.0f, 1.0f, true,
@@ -380,10 +379,8 @@ struct jit_softmax_t<sve_512> : public jit_softmax_base_t<sve_512> {
     };
 
     void prepare_tail_mask() override {
-        printf("prepare_tail_mask\n");
-        const int sw_tail = pd_->C() % simd_w_;
         uint32_t idx = IDX(tail_opmask);
-        switch (sw_tail) {
+        switch (axis_simd_tail_) {
             case 16: ptrue(PRegS(idx), VL16); break;
             case 8: ptrue(PRegS(idx), VL8); break;
             case 7: ptrue(PRegS(idx), VL7); break;
@@ -395,13 +392,12 @@ struct jit_softmax_t<sve_512> : public jit_softmax_base_t<sve_512> {
             case 1: ptrue(PRegS(idx), VL1); break;
             default:
                 index(ZRegS(IDX(vtmp)), 1, 1);
-                cmple(PRegS(idx), p_512 / T_z, ZRegS(IDX(vtmp)), sw_tail);
+                cmple(PRegS(idx), p_512 / T_z, ZRegS(IDX(vtmp)), axis_simd_tail_);
                 break;
         }
     }
 
     void get_horizontal_op(const ZReg &v, const ZReg &vtmp, op_t op) override {
-        printf("get_horizontal_op\n");
         mov(ZRegS(IDX(vtmp)), P_ALL_ONE, ZRegS(IDX(v)));
         ext(ZRegB(IDX(vtmp)), ZRegB(IDX(v)), 32);
         perform_op(v, vtmp, op);
@@ -425,14 +421,13 @@ struct jit_softmax_t<sve_512> : public jit_softmax_base_t<sve_512> {
     }
 
     void accumulate_vmax() override {
-        printf("accumulate_vmax\n");
         // flush to -FLT_MAX before accumulation
         mov(ZRegB(IDX(vmax)), P_ALL_ONE, ZRegB(IDX(vneg_flt_max)));
 
         axis_loop([&](int unroll, bool tail = false) {
             for (int i = 0; i < unroll; i++) {
                 ZReg vreg_tmp_src = ZReg(i + 1);
-                load(vreg_tmp_src, src_ptr(axis_stride_ * i), tail); // SEGV
+                load(vreg_tmp_src, src_ptr(axis_stride_ * i), tail);
                 if (tail)
                     uni_fmax(vmax, vmax, vreg_tmp_src, tail_opmask);
                 else
@@ -444,7 +439,6 @@ struct jit_softmax_t<sve_512> : public jit_softmax_base_t<sve_512> {
     }
 
     void accumulate_vsum() override {
-        printf("accumulate_vsum\n");
         eor(vsum.d, vsum.d, vsum.d); // flush to zero before accumulation
 
         axis_loop([&](int unroll, bool tail = false) {
@@ -476,7 +470,6 @@ struct jit_softmax_t<sve_512> : public jit_softmax_base_t<sve_512> {
     }
 
     void compute_dst() override {
-        printf("compute_dst\n");
         axis_loop([&](int unroll, bool tail = false) {
             for (int i = 0; i < unroll; i++) {
                 ZReg vreg_tmp_src = ZReg(i + 1);
@@ -495,7 +488,6 @@ struct jit_softmax_t<sve_512> : public jit_softmax_base_t<sve_512> {
     }
 
     void accumulate_vsbr() override {
-        printf("accumulate_vsbr\n");
         eor(vsbr.d, vsbr.d, vsbr.d); // flush to zero before accumulation
 
         axis_loop([&](int unroll, bool tail = false) {
@@ -518,7 +510,6 @@ struct jit_softmax_t<sve_512> : public jit_softmax_base_t<sve_512> {
     }
 
     void compute_diff_src() override {
-        printf("compute_diff_src\n");
         axis_loop([&](int unroll, bool tail = false) {
             for (int i = 0; i < unroll; i++) {
                 ZReg vreg_tmp_dst = ZReg(i * 2 + 1);
