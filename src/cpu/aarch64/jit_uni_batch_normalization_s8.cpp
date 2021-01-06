@@ -28,7 +28,7 @@
 
 #include "cpu/aarch64/jit_uni_batch_normalization_s8.hpp"
 
-#define IDX(a) static_cast<uint32_t>(a.getIdx())
+#define IDX(a) static_cast<int8_t>(a.getIdx())
 
 namespace dnnl {
 namespace impl {
@@ -94,7 +94,7 @@ struct jit_bnorm_base_t : public jit_generator {
         XReg x_addr = base;
         uint32_t offIdx = off.getIdx();
 
-        if (offIdx <= (uint32_t)SP_IDX) {
+        if (offIdx <= SP_IDX) {
             add(X_DEFAULT_ADDR, base, off);
             x_addr = X_DEFAULT_ADDR;
         }
