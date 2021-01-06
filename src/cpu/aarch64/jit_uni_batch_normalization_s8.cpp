@@ -89,8 +89,8 @@ struct jit_bnorm_base_t : public jit_generator {
     PReg p_lsb_128 = p6;
     PReg p_tmp0 = p5;
 
-    XReg xreg_addr(const XReg &base, const XReg &off = XReg(24),
-            const int disp = 0) {
+    XReg xreg_addr(
+            const XReg &base, const XReg &off = XReg(24), const int disp = 0) {
         XReg x_addr = base;
         int8_t offIdx = off.getIdx();
 
@@ -189,7 +189,8 @@ struct jit_bnorm_base_t : public jit_generator {
     }
 
     XReg shift_ptr(size_t offt = 0) {
-        return xreg_addr(reg_scale_shift, reg_channel_offt_4byte, offt + chan_data_offt_);
+        return xreg_addr(reg_scale_shift, reg_channel_offt_4byte,
+                offt + chan_data_offt_);
     }
 
     XReg src_ptr(size_t offt = 0) {
@@ -228,8 +229,10 @@ struct jit_bnorm_base_t : public jit_generator {
     }
 
     void forward() {
-        eor(reg_channel_offt_1byte, reg_channel_offt_1byte, reg_channel_offt_1byte);
-        eor(reg_channel_offt_4byte, reg_channel_offt_4byte, reg_channel_offt_4byte);
+        eor(reg_channel_offt_1byte, reg_channel_offt_1byte,
+                reg_channel_offt_1byte);
+        eor(reg_channel_offt_4byte, reg_channel_offt_4byte,
+                reg_channel_offt_4byte);
         mov(WReg(IDX(reg_tmp)), sizeof(data_t) * c_in_xmm_);
 
         if (num_c16_blocks_) compute_dst(false);
@@ -297,8 +300,8 @@ struct jit_bnorm_t<sve_512> : public jit_bnorm_base_t<sve_512> {
         }
     }
 
-    void load_scale_and_shift(const ZReg &vscale, const ZReg &vshift, size_t offt,
-            bool need_tail) override {
+    void load_scale_and_shift(const ZReg &vscale, const ZReg &vshift,
+            size_t offt, bool need_tail) override {
         if (need_tail) {
             ld1w(vscale.s, tail_opmask / T_z, ptr(scale_ptr(offt)));
             ld1w(vshift.s, tail_opmask / T_z, ptr(shift_ptr(offt)));
@@ -332,7 +335,7 @@ struct jit_bnorm_t<sve_512> : public jit_bnorm_base_t<sve_512> {
                         if (c_tail_ <= 8) {
                             ptrue(p_tmp0.b, Pattern((int)c_tail_));
                         } else {
-                            ptrue(p_tmp0.b, Pattern((int)c_tail_-8));
+                            ptrue(p_tmp0.b, Pattern((int)c_tail_ - 8));
                             ptrue(P_TMP_1.b, VL8);
                             zip1(p_tmp0.d, P_TMP_1.d, p_tmp0.d);
                         }
@@ -364,7 +367,7 @@ struct jit_bnorm_t<sve_512> : public jit_bnorm_base_t<sve_512> {
                     uzp1(v.b, z_tmp0.b, v.b);
 
                     if (c_tail_ != 0) {
-                         st1b(v.b, p_tmp0 / T_m, ptr(dst_ptr()));
+                        st1b(v.b, p_tmp0 / T_m, ptr(dst_ptr()));
                     }
                 } else {
                     mov(z_tmp0.d, v.d);
@@ -380,16 +383,17 @@ struct jit_bnorm_t<sve_512> : public jit_bnorm_base_t<sve_512> {
 
             // reg_tmp checks c_in_xmm_ channels ahead for further tail process
             add(reg_tmp, reg_tmp, sizeof(data_t) * c_in_xmm_);
-            add(reg_channel_offt_1byte, reg_channel_offt_1byte, sizeof(data_t) * c_in_xmm_);
-            add(reg_channel_offt_4byte, reg_channel_offt_4byte, sizeof(float) * c_in_xmm_);
+            add(reg_channel_offt_1byte, reg_channel_offt_1byte,
+                    sizeof(data_t) * c_in_xmm_);
+            add(reg_channel_offt_4byte, reg_channel_offt_4byte,
+                    sizeof(float) * c_in_xmm_);
             cmp(reg_tmp, reg_channel_offt_count);
             b(LE, c_loop);
         }
     }
 
     jit_bnorm_t(const batch_normalization_pd_t *pd)
-        : jit_bnorm_base_t<sve_512>(pd) {
-    }
+        : jit_bnorm_base_t<sve_512>(pd) {}
 };
 
 } // namespace
@@ -469,7 +473,8 @@ jit_uni_batch_normalization_s8_fwd_t<isa>::jit_uni_batch_normalization_s8_fwd_t(
 
 template <cpu_isa_t isa>
 status_t jit_uni_batch_normalization_s8_fwd_t<isa>::init(engine_t *engine) {
-    CHECK(safe_ptr_assign(bnorm_driver_, new bnorm_s8_impl::driver_t<isa>(pd())));
+    CHECK(safe_ptr_assign(
+            bnorm_driver_, new bnorm_s8_impl::driver_t<isa>(pd())));
     return bnorm_driver_->create_kernel();
 }
 
