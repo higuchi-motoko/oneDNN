@@ -138,11 +138,15 @@ static inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
             return cpu().has(Cpu::tSVE) && cpu().getSveLen() == SVE_384;
         case sve_512:
             return cpu().has(Cpu::tSVE) && cpu().getSveLen() == SVE_512;
-            //return false;
         case isa_any: return true;
         case isa_all: return false;
     }
     return false;
+}
+
+static inline bool mayiuse_atomic() {
+    using namespace Xbyak_aarch64::util;
+    return cpu().isAtomicSupported();
 }
 
 inline bool isa_has_bf16(cpu_isa_t isa) {
