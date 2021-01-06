@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2020 Intel Corporation
+* Copyright 2020 Intel Corporation
 * Copyright 2020 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,65 +32,62 @@ void generate(jit_generator &code, Xbyak_aarch64::XReg reg_ctx,
 #define BAR_SENSE_OFF offsetof(ctx_t, sense)
     using namespace Xbyak_aarch64;
 
-    XReg reg_tmp = [&]() {
-        /* returns register which is neither reg_ctx nor reg_nthr */
-        const int regs[] = {0, 3, 1};
-        for (size_t i = 0; i < sizeof(regs) / sizeof(regs[0]); ++i)
-            if (!utils::one_of(i, reg_ctx.getIdx(), reg_nthr.getIdx()))
-                return XReg(i);
-        return XReg(0); /* should not happen */
-    }();
+    const XReg x_tmp_0 = code.X_TMP_0;
+    const WReg w_tmp_1 = code.W_TMP_1;
+    const XReg x_addr_sense = code.X_TMP_2;
+    const XReg x_addr_ctx = code.X_TMP_3;
+    const XReg x_sense = code.X_TMP_4;
+    const XReg x_tmp_addr = code.X_DEFAULT_ADDR;
 
-    Label barrier_exit_label, barrier_exit_restore_label, spin_label;
+    Label barrier_exit_label, spin_label, atomic_label;
 
-    code.mov(code.X_TMP_3, code.sp);
     code.cmp(reg_nthr, 1);
     code.b(EQ, barrier_exit_label);
 
-    code.sub(code.X_TMP_3, code.X_TMP_3, 8);
-    code.str(reg_tmp, ptr(code.X_TMP_3));
-
     /* take and save current sense */
-    code.add_imm(code.X_TMP_0, reg_ctx, BAR_SENSE_OFF, code.X_TMP_0);
-    code.ldr(reg_tmp, ptr(code.X_TMP_0));
-    code.sub(code.X_TMP_3, code.X_TMP_3, 8);
-    code.str(reg_tmp, ptr(code.X_TMP_3));
-    code.mov(reg_tmp, 1);
+    code.add_imm(x_addr_sense, reg_ctx, BAR_SENSE_OFF, x_tmp_0);
+    code.ldr(x_sense, ptr(x_addr_sense));
 
-    code.add_imm(code.X_TMP_1, reg_ctx, BAR_CTR_OFF, code.X_TMP_2);
+    code.add_imm(x_addr_ctx, reg_ctx, BAR_CTR_OFF, x_tmp_addr);
     if (mayiuse(sve_512)) {
-        code.prfm(PLDL1KEEP, ptr(code.X_TMP_1));
-        code.prfm(PLDL1KEEP, ptr(code.X_TMP_1));
+        code.prfm(PLDL1KEEP, ptr(x_addr_ctx));
+        code.prfm(PLDL1KEEP, ptr(x_addr_ctx));
     }
 
-    code.ldaddal(reg_tmp, reg_tmp, ptr(code.X_TMP_1));
-    code.add(reg_tmp, reg_tmp, 1);
-    code.cmp(reg_tmp, reg_nthr);
-    code.ldr(reg_tmp, ptr(code.X_TMP_3));
-    code.add(code.X_TMP_3, code.X_TMP_3, 8);
+    if (mayiuse_atomic()) {
+        code.mov(x_tmp_0, 1);
+        code.ldaddal(x_tmp_0, x_tmp_0, ptr(x_addr_ctx));
+        code.add(x_tmp_0, x_tmp_0, 1);
+    } else {
+        code.L(atomic_label);
+        code.ldaxr(x_tmp_0, ptr(x_addr_ctx));
+        code.add(x_tmp_0, x_tmp_0, 1);
+        code.stlxr(w_tmp_1, x_tmp_0, ptr(x_addr_ctx));
+        code.cbnz(w_tmp_1, atomic_label);
+    }
+    code.cmp(x_tmp_0, reg_nthr);
     code.b(NE, spin_label);
 
     /* the last thread {{{ */
-    code.mov_imm(code.X_TMP_2, 0);
-    code.str(code.X_TMP_2, ptr(code.X_TMP_1));
+    code.mov_imm(x_tmp_0, 0);
+    code.str(x_tmp_0, ptr(x_addr_ctx)); // reset ctx
+    /* commit CTX clear, before modify SENSE,
+       otherwise other threads load old SENSE value. */
+    code.dmb(ISH);
 
     // notify waiting threads
-    code.mvn(reg_tmp, reg_tmp);
-    code.str(reg_tmp, ptr(code.X_TMP_0));
-    code.b(barrier_exit_restore_label);
+    code.mvn(x_sense, x_sense);
+    code.str(x_sense, ptr(x_addr_sense));
+    code.b(barrier_exit_label);
     /* }}} the last thread */
 
     code.L(spin_label);
-    code.ldr(code.X_TMP_1, ptr(code.X_TMP_0));
-    code.cmp(reg_tmp, code.X_TMP_1);
+    code.yield();
+    code.ldr(x_tmp_0, ptr(x_addr_sense));
+    code.cmp(x_tmp_0, x_sense);
     code.b(EQ, spin_label);
 
     code.dmb(ISH);
-
-    code.L(barrier_exit_restore_label);
-    code.ldr(reg_tmp, ptr(code.X_TMP_3));
-    code.add(code.X_TMP_3, code.X_TMP_3, 8);
-
     code.L(barrier_exit_label);
 
 #undef BAR_CTR_OFF
@@ -110,11 +107,6 @@ struct jit_t : public jit_generator {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_t)
 };
-
-void barrier(ctx_t *ctx, int nthr) {
-    static jit_t j; /* XXX: constructed on load ... */
-    j(ctx, nthr);
-}
 
 } // namespace simple_barrier
 

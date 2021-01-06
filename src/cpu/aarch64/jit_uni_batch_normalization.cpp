@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2020 Intel Corporation
+* Copyright 2020 Intel Corporation
 * Copyright 2020 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,7 +33,6 @@
 #include "cpu/aarch64/jit_uni_batch_normalization.hpp"
 
 #define IDX(a) static_cast<uint32_t>(a.getIdx())
-#define DUMMY_IDX 30
 
 namespace dnnl {
 namespace impl {
@@ -83,8 +82,6 @@ struct jit_bnorm_t : public jit_generator {
     bool is_spatial_thr_;
     bool is_nspc_;
     bool is_bf16_;
-
-    XReg rsp = sp;
 
     XReg reg_param = abi_param1;
 
@@ -214,7 +211,7 @@ struct jit_bnorm_t : public jit_generator {
 #define STR_PARAM_TMP(x, y) \
     assert(-256 <= static_cast<int32_t>(x) - static_cast<int32_t>(y) \
             && static_cast<int32_t>(x) - static_cast<int32_t>(y) <= 256); \
-    str(X_TMP_0, pre_ptr(x_tmp_sp, x - y));
+    str(X_TMP_0, pre_ptr(X_TMP_4, x - y));
 
         mov(X_DEFAULT_ADDR, reg_param);
         ldr(reg_rbuf1, pre_ptr(X_DEFAULT_ADDR, PARAM_OFF(rbuf1)));
@@ -241,10 +238,9 @@ struct jit_bnorm_t : public jit_generator {
         dup(vone.s, W_TMP_2);
         dup(veps.s, W_TMP_3);
 
-        XReg x_tmp_sp = X_TMP_4;
-        mov(x_tmp_sp, rsp);
+        mov(X_TMP_4, X_SP);
         LDR_PARAM_TMP(N_nthr, eps);
-        str(X_TMP_0, pre_ptr(x_tmp_sp, stack_off_N_nthr));
+        str(X_TMP_0, pre_ptr(X_TMP_4, stack_off_N_nthr));
         LDR_PARAM_TMP(N_ithr, N_nthr);
         STR_PARAM_TMP(stack_off_N_ithr, stack_off_N_nthr);
 
@@ -338,7 +334,7 @@ struct jit_bnorm_t : public jit_generator {
         if (with_relu) { uni_eor(vzero, vzero, vzero); }
     }
 
-    void fwd_process_relu_avx512_common(ZReg vdst, int offt = 0) {
+    void fwd_process_relu_sve_512_common(ZReg vdst, int offt = 0) {
         if (is_nspc_)
             lsr(reg_soff_nspc, reg_soff_nspc, bit_shift() % 64);
         else
@@ -371,7 +367,7 @@ struct jit_bnorm_t : public jit_generator {
             lsl(reg_soff, reg_soff, bit_shift() % 64);
     }
 
-    void bwd_process_relu_avx512_common(ZReg vdiff_dst, int offt = 0) {
+    void bwd_process_relu_sve_512_common(ZReg vdiff_dst, int offt = 0) {
         PReg p_mask(IDX(kstore_mask));
         if (is_nspc_) {
             lsr(reg_soff_nspc, reg_soff_nspc, bit_shift() % 64);
@@ -414,7 +410,7 @@ struct jit_bnorm_t : public jit_generator {
     void uni_store_spat_data(const XReg &x, const ZReg &z) { str(z, ptr(x)); }
 
     void jump_check(const Label &l_no_mask) {
-        add_imm(X_TMP_0, rsp, (int)stack_off_is_cblk_tail, X_TMP_1);
+        add_imm(X_TMP_0, X_SP, (int)stack_off_is_cblk_tail, X_TMP_1);
         ldr(reg_tmp, ptr(X_TMP_0));
         cmp(reg_tmp, 0);
         b(EQ, l_no_mask);
@@ -518,18 +514,14 @@ struct jit_bnorm_t : public jit_generator {
     XReg xreg_addr(const XReg &base, const XReg &off = XReg(DUMMY_IDX),
             const int disp = 0) {
         XReg x_addr = base;
+        uint32_t offIdx = off.getIdx();
 
-        if (off.getIdx() >= SP_IDX && disp == 0) {
-            x_addr = base;
-        } else if (off.getIdx() < SP_IDX && disp == 0) {
+        if (offIdx <= SP_IDX) {
             add(X_DEFAULT_ADDR, base, off);
             x_addr = X_DEFAULT_ADDR;
-        } else if (off.getIdx() >= SP_IDX && disp) {
+        }
+        if (disp) {
             add_imm(X_DEFAULT_ADDR, x_addr, disp, X_TMP_0);
-            x_addr = X_DEFAULT_ADDR;
-        } else {
-            add(X_DEFAULT_ADDR, base, off);
-            add_imm(X_DEFAULT_ADDR, X_DEFAULT_ADDR, disp, X_TMP_0);
             x_addr = X_DEFAULT_ADDR;
         }
 
@@ -560,9 +552,9 @@ struct jit_bnorm_t : public jit_generator {
     }
 
     void barrier() {
-        add_imm(X_TMP_1, rsp, (int)stack_off_N_nthr, X_TMP_0);
+        add_imm(X_TMP_1, X_SP, (int)stack_off_N_nthr, X_TMP_0);
         ldr(reg_nnthr, ptr(X_TMP_1));
-        add_imm(X_TMP_1, rsp, (int)stack_off_barrier, X_TMP_0);
+        add_imm(X_TMP_1, X_SP, (int)stack_off_barrier, X_TMP_0);
         ldr(reg_bar, ptr(X_TMP_1));
         simple_barrier::generate(*this, reg_bar, reg_nnthr);
     }
@@ -600,9 +592,9 @@ struct jit_bnorm_t : public jit_generator {
             init(i);
         if (loop_unroll) {
             if (is_spatial_thr_) {
-                add_imm(X_TMP_0, rsp, (int)stack_off_spat_size_loc, X_TMP_1);
+                add_imm(X_TMP_0, X_SP, (int)stack_off_spat_size_loc, X_TMP_1);
                 ldr(reg_ctr, ptr(X_TMP_0));
-                add_imm(X_TMP_0, rsp, (int)stack_off_s_s, X_TMP_1);
+                add_imm(X_TMP_0, X_SP, (int)stack_off_s_s, X_TMP_1);
                 ldr(X_TMP_0, ptr(X_TMP_0));
                 add(reg_soff, reg_soff, X_TMP_0);
             } else {
@@ -620,7 +612,7 @@ struct jit_bnorm_t : public jit_generator {
                 cbnz(reg_ctr, label);
             }
             if (is_spatial_thr_) {
-                add_imm(X_TMP_0, rsp, (int)stack_off_s_tail, X_TMP_1);
+                add_imm(X_TMP_0, X_SP, (int)stack_off_s_tail, X_TMP_1);
                 ldr(X_TMP_0, ptr(X_TMP_0));
                 add(reg_soff, reg_soff, X_TMP_0);
             }
@@ -734,9 +726,9 @@ struct jit_bnorm_t : public jit_generator {
         eor(reg_soff_nspc, reg_soff_nspc, reg_soff_nspc);
 
         if (is_spatial_thr_) {
-            add_imm(X_TMP_0, rsp, (int)stack_off_spat_size_loc, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_spat_size_loc, X_TMP_1);
             ldr(reg_ctr, ptr(X_TMP_0));
-            add_imm(X_TMP_0, rsp, (int)stack_off_s_s, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_s_s, X_TMP_1);
             ldr(X_TMP_0, ptr(X_TMP_0));
             add(reg_soff_nspc, reg_soff_nspc, X_TMP_0);
 
@@ -773,9 +765,9 @@ struct jit_bnorm_t : public jit_generator {
             eor(reg_soff_nspc, reg_soff_nspc, reg_soff_nspc);
 
             if (is_spatial_thr_) {
-                add_imm(X_TMP_0, rsp, (int)stack_off_spat_size_loc, X_TMP_1);
+                add_imm(X_TMP_0, X_SP, (int)stack_off_spat_size_loc, X_TMP_1);
                 ldr(reg_ctr, ptr(X_TMP_0));
-                add_imm(X_TMP_0, rsp, (int)stack_off_s_s, X_TMP_1);
+                add_imm(X_TMP_0, X_SP, (int)stack_off_s_s, X_TMP_1);
                 ldr(X_TMP_0, ptr(X_TMP_0));
                 add(reg_soff_nspc, reg_soff_nspc, X_TMP_0);
             } else {
@@ -820,7 +812,7 @@ struct jit_bnorm_t : public jit_generator {
                     if (with_relu_inf_only) { // --attr=post_ops='relu'
                         uni_fmax(TRegS(idx), TRegS(idx), vzero.s);
                     } else if (with_relu) { // --flags=R
-                        fwd_process_relu_avx512_common(ZReg(idx));
+                        fwd_process_relu_sve_512_common(ZReg(idx));
                     }
 
                     if (stream_store_allowed) {
@@ -958,7 +950,7 @@ struct jit_bnorm_t : public jit_generator {
             b(NE, zero_rbuf);
         }
 
-        add_imm(X_TMP_0, rsp, (int)stack_off_src, X_TMP_1);
+        add_imm(X_TMP_0, X_SP, (int)stack_off_src, X_TMP_1);
         ldr(reg_src, ptr(X_TMP_0));
 
         eor(reg_soff, reg_soff, reg_soff);
@@ -997,18 +989,18 @@ struct jit_bnorm_t : public jit_generator {
         }
 
         if (is_nspc_) {
-            add_imm(X_TMP_0, rsp, (int)stack_off_src, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_src, X_TMP_1);
             ldr(reg_src, ptr(X_TMP_0)); // comeback
         }
 
         Label no_mean_reduction;
         barrier();
         {
-            add_imm(X_TMP_0, rsp, (int)stack_off_N_ithr, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_N_ithr, X_TMP_1);
             ldr(reg_tmp, ptr(X_TMP_0));
             cmp(reg_tmp, 0);
             b(NE, no_mean_reduction);
-            add_imm(X_TMP_0, rsp, (int)stack_off_N_nthr, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_N_nthr, X_TMP_1);
             ldr(reg_nnthr, ptr(X_TMP_0));
             eor(reg_coff, reg_coff, reg_coff);
             Label mean_reduction_channels;
@@ -1087,19 +1079,19 @@ struct jit_bnorm_t : public jit_generator {
         }
 
         if (is_nspc_) {
-            add_imm(X_TMP_0, rsp, (int)stack_off_src, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_src, X_TMP_1);
             ldr(reg_src, ptr(X_TMP_0));
         }
 
         Label no_var_reduction;
         barrier();
         {
-            add_imm(X_TMP_0, rsp, (int)stack_off_N_ithr, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_N_ithr, X_TMP_1);
             ldr(reg_tmp, ptr(X_TMP_0));
             cmp(reg_tmp, 0);
             b(NE, no_var_reduction);
 
-            add_imm(X_TMP_0, rsp, (int)stack_off_N_nthr, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_N_nthr, X_TMP_1);
             ldr(reg_nnthr, ptr(X_TMP_0));
             eor(reg_coff, reg_coff, reg_coff);
             Label var_reduction_channels;
@@ -1187,7 +1179,7 @@ struct jit_bnorm_t : public jit_generator {
                                 uni_fmax(v.s, v.s, vzero.s);
                             } else if (with_relu) {
                                 if (isa == sve_512)
-                                    fwd_process_relu_avx512_common(
+                                    fwd_process_relu_sve_512_common(
                                             ZReg(IDX(v)), offt);
                             }
                             if (stream_store_allowed) {
@@ -1269,11 +1261,11 @@ struct jit_bnorm_t : public jit_generator {
     }
 
     void forward() {
-        add_imm(X_TMP_0, rsp, (int)stack_off_src, X_TMP_1);
+        add_imm(X_TMP_0, X_SP, (int)stack_off_src, X_TMP_1);
         ldr(reg_src, ptr(X_TMP_0));
-        add_imm(X_TMP_0, rsp, (int)stack_off_dst, X_TMP_1);
+        add_imm(X_TMP_0, X_SP, (int)stack_off_dst, X_TMP_1);
         ldr(reg_dst, ptr(X_TMP_0));
-        add_imm(X_TMP_0, rsp, (int)stack_off_ws, X_TMP_1);
+        add_imm(X_TMP_0, X_SP, (int)stack_off_ws, X_TMP_1);
         ldr(reg_ws, ptr(X_TMP_0));
 
         eor(reg_soff, reg_soff, reg_soff);
@@ -1318,11 +1310,11 @@ struct jit_bnorm_t : public jit_generator {
 
         if (is_nspc_) {
             // comeback
-            add_imm(X_TMP_0, rsp, (int)stack_off_src, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_src, X_TMP_1);
             ldr(reg_src, ptr(X_TMP_0));
-            add_imm(X_TMP_0, rsp, (int)stack_off_dst, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_dst, X_TMP_1);
             ldr(reg_dst, ptr(X_TMP_0));
-            add_imm(X_TMP_0, rsp, (int)stack_off_ws, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_ws, X_TMP_1);
             ldr(reg_ws, ptr(X_TMP_0));
         }
     }
@@ -1361,7 +1353,7 @@ struct jit_bnorm_t : public jit_generator {
                         uni_load_spat_data(t2, X_TMP_0);
                         if (with_relu) {
                             if (isa == sve_512)
-                                bwd_process_relu_avx512_common(
+                                bwd_process_relu_sve_512_common(
                                         ZReg(IDX(t2)), offt);
                             else
                                 assert(false);
@@ -1423,9 +1415,9 @@ struct jit_bnorm_t : public jit_generator {
         eor(reg_soff_nspc, reg_soff_nspc, reg_soff_nspc);
 
         if (is_spatial_thr_) {
-            add_imm(X_TMP_0, rsp, (int)stack_off_spat_size_loc, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_spat_size_loc, X_TMP_1);
             ldr(reg_ctr, ptr(X_TMP_0));
-            add_imm(X_TMP_0, rsp, (int)stack_off_s_s, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_s_s, X_TMP_1);
             ldr(reg_soff_nspc, ptr(X_TMP_0));
         } else {
             mov_imm(reg_ctr, spat_size);
@@ -1450,7 +1442,7 @@ struct jit_bnorm_t : public jit_generator {
 
                 if (with_relu) {
                     if (isa == sve_512)
-                        bwd_process_relu_avx512_common(ZReg(sp_idx + 1), offt);
+                        bwd_process_relu_sve_512_common(ZReg(sp_idx + 1), offt);
                     else
                         assert(false);
                 }
@@ -1515,7 +1507,7 @@ struct jit_bnorm_t : public jit_generator {
 
         // comeback
         mov(reg_coff_max, reg_coff_max_bwd_copy);
-        add_imm(X_TMP_0, rsp, (int)stack_off_diff_scale_shift, X_TMP_1);
+        add_imm(X_TMP_0, X_SP, (int)stack_off_diff_scale_shift, X_TMP_1);
         ldr(reg_diff_scale_shift, ptr(X_TMP_0));
 
         sub(reg_src, reg_src, reg_coff_max);
@@ -1559,7 +1551,7 @@ struct jit_bnorm_t : public jit_generator {
                             uni_load_spat_data(v, X_TMP_0);
                             if (with_relu) {
                                 if (isa == sve_512)
-                                    bwd_process_relu_avx512_common(
+                                    bwd_process_relu_sve_512_common(
                                             ZReg(IDX(v)), offt);
                                 else
                                     assert(false);
@@ -1630,9 +1622,9 @@ struct jit_bnorm_t : public jit_generator {
         auto compute = [=](bool stream_store_allowed) {
             eor(reg_soff_nspc, reg_soff_nspc, reg_soff_nspc);
             if (is_spatial_thr_) {
-                add_imm(X_TMP_0, rsp, (int)stack_off_spat_size_loc, X_TMP_1);
+                add_imm(X_TMP_0, X_SP, (int)stack_off_spat_size_loc, X_TMP_1);
                 ldr(reg_ctr, ptr(X_TMP_0));
-                add_imm(X_TMP_0, rsp, (int)stack_off_s_s, X_TMP_1);
+                add_imm(X_TMP_0, X_SP, (int)stack_off_s_s, X_TMP_1);
                 ldr(reg_soff_nspc, ptr(X_TMP_0));
             } else {
                 mov_imm(reg_ctr, spat_size);
@@ -1656,9 +1648,9 @@ struct jit_bnorm_t : public jit_generator {
                     if (bdesc_->use_scaleshift())
                         uni_load_maybe_tail(vgamma, gamma_ptr(coff));
 
-                    add_imm(X_TMP_0, rsp, (int)stack_off_ws_off_copy, X_TMP_1);
+                    add_imm(X_TMP_0, X_SP, (int)stack_off_ws_off_copy, X_TMP_1);
                     str(reg_ws, ptr(X_TMP_0));
-                    add_imm(X_TMP_0, rsp, (int)stack_off_diff_scale_shift,
+                    add_imm(X_TMP_0, X_SP, (int)stack_off_diff_scale_shift,
                             X_TMP_1);
                     ldr(reg_ws, ptr(X_TMP_0));
                     add(X_TMP_0, reg_ws, reg_coff);
@@ -1669,7 +1661,7 @@ struct jit_bnorm_t : public jit_generator {
                         add_imm(X_TMP_0, X_TMP_0, coff + chan_data_offt,
                                 X_TMP_1);
                     uni_load_maybe_tail(vdiff_beta, X_TMP_0);
-                    add_imm(X_TMP_0, rsp, (int)stack_off_ws_off_copy, X_TMP_1);
+                    add_imm(X_TMP_0, X_SP, (int)stack_off_ws_off_copy, X_TMP_1);
                     ldr(reg_ws, ptr(X_TMP_0));
 
                     fmul(vdiff_gamma.s, vdiff_gamma.s, vsqrtvar.s);
@@ -1682,7 +1674,7 @@ struct jit_bnorm_t : public jit_generator {
 
                     if (with_relu) {
                         if (isa == sve_512)
-                            bwd_process_relu_avx512_common(ZReg(idx), offt);
+                            bwd_process_relu_sve_512_common(ZReg(idx), offt);
                         else
                             assert(false);
                     }
@@ -1775,7 +1767,7 @@ struct jit_bnorm_t : public jit_generator {
 
         // comeback
         mov(reg_coff_max, reg_coff_max_bwd_copy);
-        add_imm(X_TMP_0, rsp, (int)stack_off_diff_scale_shift, X_TMP_1);
+        add_imm(X_TMP_0, X_SP, (int)stack_off_diff_scale_shift, X_TMP_1);
         ldr(reg_diff_scale_shift, ptr(X_TMP_0));
 
         sub(reg_diff_dst, reg_diff_dst, reg_coff_max);
@@ -1806,13 +1798,13 @@ struct jit_bnorm_t : public jit_generator {
             b(NE, zero_rbuf);
         }
 
-        add_imm(X_TMP_0, rsp, (int)stack_off_src, X_TMP_1);
+        add_imm(X_TMP_0, X_SP, (int)stack_off_src, X_TMP_1);
         ldr(reg_src, ptr(X_TMP_0));
-        add_imm(X_TMP_0, rsp, (int)stack_off_diff_dst, X_TMP_1);
+        add_imm(X_TMP_0, X_SP, (int)stack_off_diff_dst, X_TMP_1);
         ldr(reg_diff_dst, ptr(X_TMP_0));
         if (with_relu) {
             assert(isa == sve_512);
-            add_imm(X_TMP_0, rsp, (int)stack_off_ws, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_ws, X_TMP_1);
             ldr(reg_ws, ptr(X_TMP_0));
         }
 
@@ -1851,25 +1843,25 @@ struct jit_bnorm_t : public jit_generator {
 
         if (is_nspc_) {
             // comeback
-            add_imm(X_TMP_0, rsp, (int)stack_off_src, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_src, X_TMP_1);
             ldr(reg_src, ptr(X_TMP_0));
-            add_imm(X_TMP_0, rsp, (int)stack_off_diff_dst, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_diff_dst, X_TMP_1);
             ldr(reg_diff_dst, ptr(X_TMP_0));
         }
 
-        add_imm(X_TMP_0, rsp, (int)stack_off_diff_scale_shift, X_TMP_1);
+        add_imm(X_TMP_0, X_SP, (int)stack_off_diff_scale_shift, X_TMP_1);
         ldr(reg_diff_scale_shift, ptr(X_TMP_0));
 
         Label no_sh_reduction;
         barrier();
         {
-            add_imm(X_TMP_0, rsp, (int)stack_off_N_ithr, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_N_ithr, X_TMP_1);
             ldr(reg_tmp, ptr(X_TMP_0));
             cmp(reg_tmp, 0);
             Label sh_reduction_channels;
             b(NE, no_sh_reduction);
 
-            add_imm(X_TMP_0, rsp, (int)stack_off_N_nthr, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_N_nthr, X_TMP_1);
             ldr(reg_nnthr, ptr(X_TMP_0));
             eor(reg_coff, reg_coff, reg_coff);
             L(sh_reduction_channels);
@@ -1916,11 +1908,11 @@ struct jit_bnorm_t : public jit_generator {
         L(no_sh_reduction);
         barrier();
 
-        add_imm(X_TMP_0, rsp, (int)stack_off_diff_src, X_TMP_1);
+        add_imm(X_TMP_0, X_SP, (int)stack_off_diff_src, X_TMP_1);
         ldr(reg_diff_src, ptr(X_TMP_0));
         if (with_relu) {
             assert(isa == sve_512);
-            add_imm(X_TMP_0, rsp, (int)stack_off_ws, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_ws, X_TMP_1);
             ldr(reg_ws, ptr(X_TMP_0));
         }
 
@@ -1962,15 +1954,15 @@ struct jit_bnorm_t : public jit_generator {
         if (is_nspc_) {
             // comeback
             if (!bdesc_->use_global_stats()) {
-                add_imm(X_TMP_0, rsp, (int)stack_off_src, X_TMP_1);
+                add_imm(X_TMP_0, X_SP, (int)stack_off_src, X_TMP_1);
                 ldr(reg_src, ptr(X_TMP_0));
             }
-            add_imm(X_TMP_0, rsp, (int)stack_off_diff_dst, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_diff_dst, X_TMP_1);
             ldr(reg_diff_dst, ptr(X_TMP_0));
-            add_imm(X_TMP_0, rsp, (int)stack_off_diff_src, X_TMP_1);
+            add_imm(X_TMP_0, X_SP, (int)stack_off_diff_src, X_TMP_1);
             ldr(reg_diff_src, ptr(X_TMP_0));
             if (with_relu) {
-                add_imm(X_TMP_0, rsp, (int)stack_off_ws, X_TMP_1);
+                add_imm(X_TMP_0, X_SP, (int)stack_off_ws, X_TMP_1);
                 ldr(reg_ws, ptr(X_TMP_0));
             }
         }
@@ -1999,16 +1991,13 @@ struct jit_bnorm_t : public jit_generator {
     void generate() override {
         preamble();
 
-        mov(XReg(DUMMY_IDX), 0);
-
         if (isa == sve_512) {
             ptrue(p_512.b);
-
             prepare_tail_mask_sve_512();
         }
 
         compute_static_strides();
-        sub_imm(rsp, rsp, (int)stack_size_required, X_TMP_0);
+        sub_imm(X_SP, X_SP, (int)stack_size_required, X_TMP_0);
         load_common_params();
         prepare_relu();
 
@@ -2018,7 +2007,7 @@ struct jit_bnorm_t : public jit_generator {
         } else {
             backward();
         }
-        add_imm(rsp, rsp, (int)stack_size_required, X_TMP_0);
+        add_imm(X_SP, X_SP, (int)stack_size_required, X_TMP_0);
         postamble();
     }
 
