@@ -46,8 +46,7 @@ void pick_loop_order(jit_conv_conf_t &jcp, int nthr) {
 }
 } // namespace
 
-template <typename Vmm>
-void _jit_sve_512_x8s8s32x_fwd_kernel<Vmm>::prepare_output(int ur_w) {
+void jit_sve_512_x8s8s32x_fwd_kernel::prepare_output(int ur_w) {
     int nb_oc_block
             = jcp.is_depthwise ? jcp.nb_ch_blocking : jcp.nb_oc_blocking;
     for (int k = 0; k < nb_oc_block; k++)
@@ -66,8 +65,7 @@ void _jit_sve_512_x8s8s32x_fwd_kernel<Vmm>::prepare_output(int ur_w) {
     }
 }
 
-template <typename Vmm>
-void _jit_sve_512_x8s8s32x_fwd_kernel<Vmm>::cvt2ps(data_type_t type_in,
+void jit_sve_512_x8s8s32x_fwd_kernel::cvt2ps(data_type_t type_in,
         const ZReg vmm_in, const XReg reg_base, const int offset,
         bool mask_flag) {
 
@@ -120,8 +118,7 @@ void _jit_sve_512_x8s8s32x_fwd_kernel<Vmm>::cvt2ps(data_type_t type_in,
                 vmm_in.s); //< vcvtdq2ps(vmm_in, vmm_in);
 }
 
-template <typename Vmm>
-void _jit_sve_512_x8s8s32x_fwd_kernel<Vmm>::store_output(
+void jit_sve_512_x8s8s32x_fwd_kernel::store_output(
         int ur_w, bool last_oc_block_flag) {
     int nb_oc_block
             = jcp.is_depthwise ? jcp.nb_ch_blocking : jcp.nb_oc_blocking;
@@ -342,15 +339,11 @@ void _jit_sve_512_x8s8s32x_fwd_kernel<Vmm>::store_output(
     }
 }
 
-template <typename Vmm>
-void _jit_sve_512_x8s8s32x_fwd_kernel<Vmm>::compute_ker_dw(int ur_w, int pad_l,
+void jit_sve_512_x8s8s32x_fwd_kernel::compute_ker_dw(int ur_w, int pad_l,
         int pad_r, ic_block_t last_ic_block_flag, bool h_padded) {
-    assert(!"invalid group blocking for depthwise convolution");
-}
 
-template <>
-void _jit_sve_512_x8s8s32x_fwd_kernel<ZReg>::compute_ker_dw(int ur_w, int pad_l,
-        int pad_r, ic_block_t last_ic_block_flag, bool h_padded) {
+    if (sve_len_ != 64)
+        assert(!"invalid group blocking for depthwise convolution");
 
     auto input_spatial_index = [=](int oi, int ki) {
         return (ki * (jcp.dilate_w + 1) + oi * jcp.stride_w - pad_l);
@@ -561,8 +554,7 @@ void _jit_sve_512_x8s8s32x_fwd_kernel<ZReg>::compute_ker_dw(int ur_w, int pad_l,
     }
 }
 
-template <typename Vmm>
-void _jit_sve_512_x8s8s32x_fwd_kernel<Vmm>::compute_ker(int ur_w, int pad_l,
+void jit_sve_512_x8s8s32x_fwd_kernel::compute_ker(int ur_w, int pad_l,
         int pad_r, ic_block_t last_ic_block_flag, bool h_padded) {
     if (jcp.is_depthwise)
         return compute_ker_dw(ur_w, pad_l, pad_r, last_ic_block_flag, h_padded);
@@ -710,8 +702,7 @@ void _jit_sve_512_x8s8s32x_fwd_kernel<Vmm>::compute_ker(int ur_w, int pad_l,
     }
 }
 
-template <typename Vmm>
-void _jit_sve_512_x8s8s32x_fwd_kernel<Vmm>::kh_loop(
+void jit_sve_512_x8s8s32x_fwd_kernel::kh_loop(
         int ur_w, int pad_l, int pad_r, ic_block_t last_ic_block_flag) {
     Label kd_label, kh_label, skip_kd_loop, skip_kh_loop;
     Label f_overflow_label, no_f_overflow_label, d_h_f_overflow_label,
@@ -868,8 +859,7 @@ void _jit_sve_512_x8s8s32x_fwd_kernel<Vmm>::kh_loop(
     }
 }
 
-template <typename Vmm>
-void _jit_sve_512_x8s8s32x_fwd_kernel<Vmm>::icb_loop(
+void jit_sve_512_x8s8s32x_fwd_kernel::icb_loop(
         int ur_w, int pad_l, int pad_r, bool is_last_sp_block) {
     prepare_output(ur_w);
 
@@ -934,28 +924,21 @@ void _jit_sve_512_x8s8s32x_fwd_kernel<Vmm>::icb_loop(
     }
 }
 
-template <typename Vmm>
-void _jit_sve_512_x8s8s32x_fwd_kernel<Vmm>::vmm_mask_all_one() {
+void jit_sve_512_x8s8s32x_fwd_kernel::vmm_mask_all_one() {
     mask_gflag = false;
-    ptrue(mask_all_one.b, VL16);
+    if (sve_len_ == 64) {
+        mask_gflag = true;
+        ptrue(mask_all_one.b);
+    } else if (sve_len_ == 32) {
+        ptrue(mask_all_one.b, VL32);
+    } else if (sve_len_ == 16) {
+        ptrue(mask_all_one.b, VL16);
+    } else {
+        assert(!"unreachable");
+    }
 }
 
-#if 0
-template <>
-void _jit_sve_512_x8s8s32x_fwd_kernel<Ymm>::vmm_mask_all_one() {
-    mask_gflag = false;
-    ptrue(mask_all_one.b, VL32);
-}
-#endif
-
-template <>
-void _jit_sve_512_x8s8s32x_fwd_kernel<ZReg>::vmm_mask_all_one() {
-    mask_gflag = true;
-    ptrue(mask_all_one.b);
-}
-
-template <typename Vmm>
-void _jit_sve_512_x8s8s32x_fwd_kernel<Vmm>::vmm_load_src(
+void jit_sve_512_x8s8s32x_fwd_kernel::vmm_load_src(
         ZReg src, XReg reg_addr, bool mask_flag) {
     if (mask_flag) {
         eor(mask_tmp.b, mask_all_one, mask_tmp.b, mask_tmp.b);
@@ -963,43 +946,20 @@ void _jit_sve_512_x8s8s32x_fwd_kernel<Vmm>::vmm_load_src(
         uzp1(mask_tmp.h, ktail_mask.h, mask_tmp.h);
         uzp1(mask_tmp.b, mask_tmp.b, mask_tmp2.b);
     } else {
-        ptrue(mask_tmp.b, VL4);
+        if (sve_len_ == 64)
+            ptrue(mask_tmp.b, VL16);
+        else if (sve_len_ == 32)
+            ptrue(mask_tmp.b, VL8);
+        else if (sve_len_ == 16)
+            ptrue(mask_tmp.b, VL4);
+        else
+            assert(!"unreabhable");
     }
+
     ld1b(src.b, mask_tmp, ptr(reg_addr));
 }
 
-#if 0
-template <>
-void _jit_sve_512_x8s8s32x_fwd_kernel<Ymm>::vmm_load_src(
-        ZReg src, XReg reg_addr, bool mask_flag) {
-    if (mask_flag) {
-        eor(mask_tmp.b, mask_all_one, mask_tmp.b, mask_tmp.b);
-        eor(mask_tmp2.b, mask_all_one, mask_tmp2.b, mask_tmp2.b);
-        uzp1(mask_tmp.h, ktail_mask.h, mask_tmp.h);
-        uzp1(mask_tmp.b, mask_tmp.b, mask_tmp2.b);
-    } else {
-        ptrue(mask_tmp.b, VL8);
-    }
-    ld1b(src.b, mask_tmp, ptr(reg_addr));
-}
-#endif
-
-template <>
-void _jit_sve_512_x8s8s32x_fwd_kernel<ZReg>::vmm_load_src(
-        ZReg src, XReg reg_addr, bool mask_flag) {
-    if (mask_flag) {
-        eor(mask_tmp.b, mask_all_one, mask_tmp.b, mask_tmp.b);
-        eor(mask_tmp2.b, mask_all_one, mask_tmp2.b, mask_tmp2.b);
-        uzp1(mask_tmp.h, ktail_mask.h, mask_tmp.h);
-        uzp1(mask_tmp.b, mask_tmp.b, mask_tmp2.b);
-    } else {
-        ptrue(mask_tmp.b, VL16);
-    }
-    ld1b(src.b, mask_tmp, ptr(reg_addr));
-}
-
-template <typename Vmm>
-void _jit_sve_512_x8s8s32x_fwd_kernel<Vmm>::generate() {
+void jit_sve_512_x8s8s32x_fwd_kernel::generate() {
     Label permute_index_table;
     int in_ic_shift = jcp.is_fused_conv ? jcp.dw_conv_buffer_oc
                                         : jcp.ic_without_padding * jcp.ngroups;
@@ -1621,9 +1581,6 @@ status_t jit_sve_512_x8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
             ? weights_d.extra().scale_adjust
             : 1.f;
 
-    int ch_block = jcp.is_depthwise ? jcp.ch_block : jcp.ic_block;
-    if (ch_block != 16) return status::unimplemented;
-
     return status::success;
 }
 
@@ -1631,11 +1588,6 @@ void jit_sve_512_x8s8s32x_fwd_kernel::init_scratchpad(
         memory_tracking::registrar_t &scratchpad, const jit_conv_conf_t &jcp,
         const primitive_attr_t &attr) {}
 
-template struct _jit_sve_512_x8s8s32x_fwd_kernel<ZReg>;
-#if 0
-template struct _jit_sve_512_x8s8s32x_fwd_kernel<Ymm>;
-template struct _jit_sve_512_x8s8s32x_fwd_kernel<Xmm>;
-#endif
 } // namespace aarch64
 } // namespace cpu
 } // namespace impl

@@ -34,24 +34,41 @@ namespace aarch64 {
 
 using namespace Xbyak_aarch64;
 
-template <typename Vmm>
-struct _jit_sve_512_x8s8s32x_fwd_kernel : public jit_generator {
+struct jit_sve_512_x8s8s32x_fwd_kernel : public jit_generator {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(_jit_sve_512_x8s8s32x_conv_fwd_ker_t)
 
     enum { STATE_FIRST_DST_LOAD = 0x1U };
 
-    _jit_sve_512_x8s8s32x_fwd_kernel(
+    jit_sve_512_x8s8s32x_fwd_kernel(
             const jit_conv_conf_t &ajcp, const primitive_attr_t &attr)
         : jcp(ajcp), attr_(attr) {
         if (jcp.with_eltwise) assert(!"not supported");
+
+        int ch_block = jcp.is_depthwise ? jcp.ch_block : jcp.ic_block;
+        if (ch_block == 16)
+            sve_len_ = 64;
+        else if (ch_block == 8)
+            sve_len_ = 32;
+        else if (ch_block == 4)
+            sve_len_ = 16;
+        else
+            assert(!"unreachable");
     }
 
-    ~_jit_sve_512_x8s8s32x_fwd_kernel() {}
+    ~jit_sve_512_x8s8s32x_fwd_kernel() {}
 
     jit_conv_conf_t jcp;
     const primitive_attr_t &attr_;
 
+    static status_t init_conf(jit_conv_conf_t &jcp,
+            const convolution_desc_t &cd, memory_desc_t &src_pd,
+            memory_desc_t &weights_pd, memory_desc_t &dst_pd,
+            memory_desc_t &bias_pd, const primitive_attr_t &attr, int nthreads);
+    static void init_scratchpad(memory_tracking::registrar_t &scratchpad,
+            const jit_conv_conf_t &jcp, const primitive_attr_t &attr);
+
 private:
+    size_t sve_len_;
     const int ic_sub_step = 4;
 
     enum {
@@ -252,40 +269,8 @@ private:
 
         return reg_tmp_adr;
     }
-};
-
-struct jit_sve_512_x8s8s32x_fwd_kernel {
-
-    jit_sve_512_x8s8s32x_fwd_kernel(
-            const jit_conv_conf_t &ajcp, const primitive_attr_t &attr)
-        : kernel_(nullptr) {
-        int ch_block = ajcp.is_depthwise ? ajcp.ch_block : ajcp.ic_block;
-        switch (ch_block) {
-            case 16:
-                kernel_ = new _jit_sve_512_x8s8s32x_fwd_kernel<ZReg>(
-                        ajcp, attr);
-                return;
-            default: assert(!"invalid channel blocking");
-        }
-    }
-
-    status_t create_kernel() { return kernel_->create_kernel(); }
-
-    ~jit_sve_512_x8s8s32x_fwd_kernel() { delete kernel_; }
 
     static bool post_ops_ok(jit_conv_conf_t &jcp, const primitive_attr_t &attr);
-
-    static status_t init_conf(jit_conv_conf_t &jcp,
-            const convolution_desc_t &cd, memory_desc_t &src_pd,
-            memory_desc_t &weights_pd, memory_desc_t &dst_pd,
-            memory_desc_t &bias_pd, const primitive_attr_t &attr, int nthreads);
-    static void init_scratchpad(memory_tracking::registrar_t &scratchpad,
-            const jit_conv_conf_t &jcp, const primitive_attr_t &attr);
-    void operator()(const jit_conv_call_s *p) const { (*kernel_)(p); }
-    const uint8_t *jit_ker() const { return kernel_->jit_ker(); }
-
-private:
-    jit_generator *kernel_;
 };
 
 } // namespace aarch64
