@@ -28,7 +28,7 @@
 
 #include "cpu/aarch64/jit_uni_batch_normalization_s8.hpp"
 
-#define IDX(a) static_cast<int8_t>(a.getIdx())
+#define IDX(a) static_cast<uint32_t>(a.getIdx())
 
 namespace dnnl {
 namespace impl {
@@ -39,7 +39,7 @@ namespace {
 
 using namespace Xbyak_aarch64;
 
-using data_t = int8_t;
+using data_t = uint32_t;
 
 struct call_params_t {
     // keep int sizes at 8 bytes -- jit code expects this
@@ -92,9 +92,9 @@ struct jit_bnorm_base_t : public jit_generator {
     XReg xreg_addr(
             const XReg &base, const XReg &off = XReg(24), const int disp = 0) {
         XReg x_addr = base;
-        int8_t offIdx = off.getIdx();
+        uint32_t offIdx = off.getIdx();
 
-        if (offIdx <= (int8_t)SP_IDX) {
+        if (offIdx <= (uint32_t)SP_IDX) {
             add(X_DEFAULT_ADDR, base, off);
             x_addr = X_DEFAULT_ADDR;
         }
@@ -107,9 +107,9 @@ struct jit_bnorm_base_t : public jit_generator {
     }
 
     void uni_fdiv(const ZRegS &dst, const ZRegS &src, const ZRegS &src2) {
-        int8_t dstIdx = IDX(dst);
-        int8_t srcIdx = IDX(src);
-        int8_t src2Idx = IDX(src2);
+        uint32_t dstIdx = IDX(dst);
+        uint32_t srcIdx = IDX(src);
+        uint32_t src2Idx = IDX(src2);
 
         if (dstIdx == src2Idx) {
             mov(z_tmp0.s, p_512 / T_m, src2);
@@ -271,7 +271,7 @@ struct jit_bnorm_t<sve_512> : public jit_bnorm_base_t<sve_512> {
         if (!c_tail_) return;
 
         // The kmovw instrucion here can be translated correctly by translator
-        int8_t idx = IDX(tail_opmask);
+        uint32_t idx = IDX(tail_opmask);
         switch (c_tail_) {
             case 16: ptrue(PRegS(idx), VL16); break;
             case 8: ptrue(PRegS(idx), VL8); break;
