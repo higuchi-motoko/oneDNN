@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2016-2020 Intel Corporation
+* Copyright 2021 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1141,6 +1142,11 @@ status_t init_conf(conv_gemm_conf_t &jcp,
     bool is_int8_conv = (is_fwd ? utils::one_of(src_d.data_type(), s8, u8)
                                 : utils::one_of(dst_d.data_type(), s8, u8))
             && weights_d.data_type() == s8;
+
+#if DNNL_AARCH64
+    // For aarch64, int8 conv is not supported.
+    if (is_int8_conv) return status::unimplemented;
+#endif
 
     auto default_dat_tag = is_int8_conv
             ? utils::pick(ndims - 3, format_tag::nwc, format_tag::nhwc,
