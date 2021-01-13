@@ -149,11 +149,12 @@ void jit_sve_512_x8s8s32x_fwd_kernel::store_output(
             cvt2ps(data_type::s32, vmm_comp, reg_compensation, comp_offset,
                     mask_flag);
         }
-        /* add to accum: compensation, bias and permute */
+        /* optimization under specific conditions: preload scale_offset data */
         if (!jcp.is_fast_depthwise && jcp.signed_input) {
             auto reg_addr = get_comp_addr_reg(reg_ptr_scales, scale_offset);
-            ld1w(vmm_comp.s, mask_all_one, ptr(reg_addr));
+            ld1w(vmm_pre_load.s, mask_all_one, ptr(reg_addr));
         }
+        /* add to accum: compensation, bias and permute */
         for (int j = 0; j < ur_w; j++) {
             auto vmm = vmm_out(j, k);
             if (jcp.is_fast_depthwise) {
@@ -187,7 +188,8 @@ void jit_sve_512_x8s8s32x_fwd_kernel::store_output(
             if (jcp.with_bias) fadd(vmm.s, vmm.s, vmm_bias.s);
 
             if (!jcp.is_fast_depthwise && jcp.signed_input) {
-                fmul(vmm.s, vmm.s, vmm_comp.s);
+                /* optimization under specific conditions: optimize using preloaded scale_offset data */
+                fmul(vmm.s, vmm.s, vmm_pre_load.s);
                 if (mask_flag) {
                     not_(mask_tmp.b, mask_all_one.b, ktail_mask.b);
                     mov(vmm.s, mask_tmp / T_m, 0);
