@@ -1145,7 +1145,7 @@ status_t init_conf(conv_gemm_conf_t &jcp,
 
 #if DNNL_AARCH64
     // For aarch64, int8 conv is not supported.
-    if (is_int8_conv) return status::unimplemented;
+    if (is_fwd && src_d.data_type() == s8) return status::unimplemented;
 #endif
 
     auto default_dat_tag = is_int8_conv
