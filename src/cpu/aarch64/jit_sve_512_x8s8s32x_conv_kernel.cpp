@@ -22,9 +22,9 @@
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
-//#include "cpu/x64/injectors/injector_utils.hpp"
+#include "cpu/aarch64/injectors/injector_utils.hpp"
 #include "cpu/binary_injector_utils.hpp"
-//#include "cpu/x64/injectors/jit_uni_eltwise_injector.hpp"
+#include "cpu/aarch64/injectors/jit_uni_eltwise_injector.hpp"
 #include "cpu/aarch64/jit_sve_512_x8s8s32x_conv_kernel.hpp"
 
 #define GET_OFF(field) static_cast<int32_t>(offsetof(jit_conv_call_s, field))
