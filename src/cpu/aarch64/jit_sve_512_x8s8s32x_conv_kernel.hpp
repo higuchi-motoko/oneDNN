@@ -21,6 +21,7 @@
 #include "common/c_types_map.hpp"
 #include "common/memory_tracking.hpp"
 
+// #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/aarch64/jit_generator.hpp"
 #include "cpu/aarch64/jit_primitive_conf.hpp"
 
@@ -37,7 +38,7 @@ struct jit_sve_512_x8s8s32x_fwd_kernel : public jit_generator {
     enum { STATE_FIRST_DST_LOAD = 0x1U };
 
     jit_sve_512_x8s8s32x_fwd_kernel(
-            const jit_conv_conf_t &ajcp, const primitive_attr_t &attr)
+            const jit_conv_conf_t &ajcp, const primitive_attr_t &attr, const memory_desc_t &dst_md)
         : jcp(ajcp), attr_(attr) {
         if (jcp.with_eltwise) assert(!"not supported");
 
@@ -52,7 +53,7 @@ struct jit_sve_512_x8s8s32x_fwd_kernel : public jit_generator {
             assert(!"unreachable");
     }
 
-    ~jit_sve_512_x8s8s32x_fwd_kernel() {}
+    //~jit_sve_512_x8s8s32x_fwd_kernel() {}
 
     jit_conv_conf_t jcp;
     const primitive_attr_t &attr_;
@@ -66,7 +67,9 @@ struct jit_sve_512_x8s8s32x_fwd_kernel : public jit_generator {
 
 private:
     size_t sve_len_;
+    constexpr static int isa_simd_width_ = cpu_isa_traits<sve_512>::vlen / sizeof(float);
     const int ic_sub_step = 4;
+    std::unique_ptr<injector::jit_uni_postops_injector_t<sve_512>>postops_injector_;
 
     enum {
         typesize = sizeof(float),
@@ -92,6 +95,7 @@ private:
     const XReg reg_compensation = x14;
     const XReg aux_reg_inp_d = x13;
     const XReg aux_reg_ker_d = x15;
+    const XReg reg_ker_long_offt = x13;
     // Using 3d regs as depthwise_3d is not yet supported
     const XReg reg_inp_buffer_ptr = aux_reg_inp_d;
     const XReg aux_reg_inp_buffer_ptr = aux_reg_ker_d;
@@ -128,6 +132,7 @@ private:
 
     const PReg ktail_mask = p2;
     const PReg kblend_mask = p8;
+    const PReg postops_mask = p5; // num?
 
     const PReg mask_tmp = p3;
     const PReg mask_tmp2 = p9;
@@ -165,15 +170,26 @@ private:
 
     bool mask_gflag;
 
+    int vmm_out_idx(int i_ur, int i_oc) {
+        const int nb_x_blocking
+                = jcp.is_depthwise ? jcp.nb_ch_blocking : jcp.nb_oc_blocking;
+        const int idx = i_ur * nb_x_blocking + i_oc;
+        assert(idx < (jcp.is_depthwise
+                               ? ker_dw_reg_base_idx
+                               : jcp.src_zero_point ? ker_zp_reg_base_idx
+                                                    : ker_reg_base_idx));
+        return idx;
+    }
     ZReg vmm_out(int i_ur, int i_oc) {
-        int nb_x_blocking
+	return ZReg(vmm_out_idx(i_ur, i_oc));
+        /*int nb_x_blocking
                 = jcp.is_depthwise ? jcp.nb_ch_blocking : jcp.nb_oc_blocking;
         int idx = i_ur * nb_x_blocking + i_oc;
         assert(idx < (jcp.is_depthwise
                                ? ker_dw_reg_base_idx
                                : jcp.src_zero_point ? ker_zp_reg_base_idx
                                                     : ker_reg_base_idx));
-        return ZReg(idx);
+        return ZReg(idx);*/
     }
     ZReg zmm_out(int i_ur, int i_oc) {
         int idx = vmm_out(i_ur, i_oc).getIdx();
@@ -187,7 +203,7 @@ private:
         return ZReg(idx);
     }
     ZReg zmm_inp(int i_ic, int nb_x_blocking) {
-        int idx = i_ic + nb_x_blocking * jcp.ur_w;
+        const int idx = i_ic + nb_x_blocking * jcp.ur_w;
         const int max_idx = jcp.src_zero_point ? ker_zp_reg_base_idx
                                                : ker_dw_reg_base_idx;
         assert(idx < max_idx);
@@ -218,6 +234,8 @@ private:
     }
 
     void prepare_output(int ur_w);
+    void apply_sum(int ur_w, bool last_oc_block_flag, const int nb_oc_block, const int oc_block, const float *p_sum_scale);
+    void apply_postops(int ur_w, bool last_oc_block_flag, const int nb_oc_block, const int oc_block, const float *p_sum_scale);
     void store_output(int ur_w, bool last_oc_block_flag);
     void compute_ker_dw(int ur_w, int pad_l, int pad_r,
             ic_block_t last_ic_block_flag, bool h_padded);
@@ -228,8 +246,9 @@ private:
     void generate() override;
     void cvt2ps(data_type_t type_in, ZReg ymm_in, const XReg reg_base,
             const int offset, bool mask_flag);
-    void vmm_mask_all_one();
-    void vmm_load_src(ZReg src, XReg reg_addr, bool mask_flag);
+    void vmm_mask_all_one(); // ?
+    void vmm_load_src(ZReg src, XReg reg_addr, bool mask_flag); // ?
+    // ZReg vmm_mask(const ZReg vmm_in, bool mask_flag, bool store = false);
 
     int get_offset(int raw_offt) {
         auto offt = raw_offt;
