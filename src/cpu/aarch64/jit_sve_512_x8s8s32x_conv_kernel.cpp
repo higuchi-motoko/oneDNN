@@ -760,9 +760,6 @@ void jit_sve_512_x8s8s32x_fwd_kernel::compute_ker(int ur_w, int pad_l,
                                         Xbyak_aarch64::ptr(reg_tmp_adr));
                             }
                         }
-                        if (!jcp.signed_input)
-                            xa_->add(vmm_inp(jj, nb_oc_block).b,
-                                    vmm_inp(jj, nb_oc_block).b, vmm_shift.b);
                     } else {
                         /* fill padded area with shifted values */
                         if (!jcp.signed_input) {
@@ -770,6 +767,11 @@ void jit_sve_512_x8s8s32x_fwd_kernel::compute_ker(int ur_w, int pad_l,
                             xa_->mov(inp.d, vmm_shift.d);
                         }
                     }
+                }
+                for (int jj = jj_start; jj < jj_end; jj++) {
+                    if (!jcp.signed_input)
+                        xa_->add(vmm_inp(jj, nb_oc_block).b,
+                                vmm_inp(jj, nb_oc_block).b, vmm_shift.b);
                 }
                 bool is_opt = vmm_inp(_start, nb_oc_block).getIdx() >= 24
                         && vmm_inp(_end - 1, nb_oc_block).getIdx() <= 29;
