@@ -630,7 +630,7 @@ void jit_sve_512_x8s8s32x_fwd_kernel::compute_ker(int ur_w, int pad_l,
                     ? div_up((jcp.ic_without_padding % ic_block), 4)
                     : ic_block / 4;
             for (int ic = 0; ic < icb; ic++) {
-                if ((is_opt) && (!jcp.signed_input)) {
+                if (is_opt) {
                     for (int ii = 0; ii < nb_oc_block; ii++) {
                         auto _vmm_wei
                                 = (ii == 0) ? vmm_wei : ZReg(inp.getIdx() + ii);
@@ -775,7 +775,7 @@ void jit_sve_512_x8s8s32x_fwd_kernel::compute_ker(int ur_w, int pad_l,
                 }
                 bool is_opt = vmm_inp(_start, nb_oc_block).getIdx() >= 24
                         && vmm_inp(_end - 1, nb_oc_block).getIdx() <= 29;
-                if ((is_opt) && (!jcp.signed_input)) {
+                if (is_opt) {
                     for (int a = 0; a < 2; a++) {
                         for (int ii = 0; ii < nb_oc_block / 2; ii++) {
                             int _ii = a * 2 + ii;
