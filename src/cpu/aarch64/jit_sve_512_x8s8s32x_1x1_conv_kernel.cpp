@@ -857,7 +857,8 @@ void _jit_sve_512_x8s8s32x_1x1_conv_kernel<Vmm>::reduce_loop(
                         }
                         dup(ZRegS(vmm_bcast.getIdx()),
                                 ZRegS(xmm_bcast.getIdx())[0]);
-                        xa_->add(vmm_bcast.b, vmm_bcast.b, vmm_shift.b);
+                        //xa_->add(vmm_bcast.b, vmm_bcast.b, vmm_shift.b);
+			xa_->nop();
                         for (int i_load = 0; i_load < load_loop_blk; ++i_load) {
                             compute(vreg_accum(i_load, i_ur), vreg_load(i_load),
                                     vmm_bcast);
@@ -877,7 +878,8 @@ void _jit_sve_512_x8s8s32x_1x1_conv_kernel<Vmm>::reduce_loop(
                                 auto zmm_bcast = (i_ur == 0)
                                         ? vmm_bcast
                                         : ZReg(reg_idx + i_ur);
-                                xa_->add(zmm_bcast.b, zmm_bcast.b, vmm_shift.b);
+                                //xa_->add(zmm_bcast.b, zmm_bcast.b, vmm_shift.b);
+			        xa_->nop();
                             }
                             for (int i_ur = 0; i_ur < ur; ++i_ur) {
                                 auto zmm_bcast = (i_ur == 0)
@@ -905,8 +907,9 @@ void _jit_sve_512_x8s8s32x_1x1_conv_kernel<Vmm>::reduce_loop(
                                     auto zmm_bcast = (i_ur == 0)
                                             ? vmm_bcast
                                             : ZReg(reg_idx + i_ur);
-                                    xa_->add(zmm_bcast.b, zmm_bcast.b,
-                                            vmm_shift.b);
+                                    //xa_->add(zmm_bcast.b, zmm_bcast.b,
+                                      //      vmm_shift.b);
+			            xa_->nop();
                                     for (int i_load = 0; i_load < load_loop_blk;
                                             ++i_load) {
                                         compute(vreg_accum(i_load,
@@ -923,7 +926,8 @@ void _jit_sve_512_x8s8s32x_1x1_conv_kernel<Vmm>::reduce_loop(
                     } else {
                         for (int i_ur = 0; i_ur < ur; ++i_ur) {
                             bcast_ptr(vmm_bcast, i_reduce, i_ur, false);
-                            xa_->add(vmm_bcast.b, vmm_bcast.b, vmm_shift.b);
+                            //xa_->add(vmm_bcast.b, vmm_bcast.b, vmm_shift.b);
+			    xa_->nop();
                             for (int i_load = 0; i_load < load_loop_blk;
                                     ++i_load) {
                                 compute(vreg_accum(i_load, i_ur),
