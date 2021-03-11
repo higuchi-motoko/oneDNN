@@ -834,9 +834,7 @@ void jit_sve_512_x8s8s32x_fwd_kernel::compute_ker(int ur_w, int pad_l,
                     if (!jcp.signed_input) {
                         for (int a = 0; a < 2; a++) {
                             for (int jj = jj_start; jj < jj_end; jj++) {
-                                xa_->add(vmm_inp(jj, nb_oc_block + a).b,
-                                        vmm_inp(jj, nb_oc_block + a).b,
-                                        vmm_shift.b);
+                                xa_->nop();
                             }
                         }
                     }
